@@ -35,9 +35,10 @@ class VoiceControlPipeline:
 
     Parameters
     ----------
-    registry      : shared CommandRegistry (updated by the application)
-    llm_interface : MockLLM or LlamaCppLLM
+    registry        : shared CommandRegistry (updated by the MQTT bridge)
+    llm_interface   : MockLLM or LlamaCppLLM
     utterance_queue : audio chunks from VADLoop
+    bridge          : MQTTBridge used to dispatch resolved commands
     """
 
     def __init__(
@@ -45,9 +46,11 @@ class VoiceControlPipeline:
         registry: CommandRegistry,
         llm_interface,
         utterance_queue: queue.Queue,
+        bridge,
     ) -> None:
         self._registry = registry
         self._q = utterance_queue
+        self._bridge = bridge
         self._transcriber = Transcriber()
         self._resolver = CommandResolver(registry, llm_interface)
         self._stop_event = threading.Event()
@@ -96,7 +99,7 @@ class VoiceControlPipeline:
 
             # 3. Execute
             result = CommandResult(commands=commands, raw_transcript=transcript)
-            execute(result)
+            execute(result, self._bridge)
 
             total_ms = (time.perf_counter() - t0) * 1000
             print(f"[Pipeline] Total latency: {total_ms:.0f} ms")

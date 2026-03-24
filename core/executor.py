@@ -1,8 +1,8 @@
 """
-core/executor.py — Command execution.
+core/executor.py — Command execution via MQTT.
 
-Replace the mock execute() body with your real application dispatch logic.
-The interface is intentionally simple: a single JSON-serialisable dict in.
+Each resolved command is published to momentobooth/do_action as a
+fire-and-forget invocation.  The bridge handles serialisation.
 """
 from __future__ import annotations
 import json
@@ -10,19 +10,24 @@ import json
 from core.registry import CommandResult
 
 
-def execute(result: CommandResult) -> None:
+def execute(result: CommandResult, bridge) -> None:
     """
-    Mock executor — prints the structured JSON output.
-    Replace this with your real application action dispatch.
-    """
-    payload = result.to_dict()
-    payload["raw_transcript"] = result.raw_transcript
+    Dispatch every command in the result through the MQTT bridge.
 
+    Parameters
+    ----------
+    result : CommandResult
+    bridge : MQTTBridge  (not type-hinted to avoid a circular import)
+    """
     print("\n" + "─" * 60)
     print("🎙  COMMAND RECOGNISED")
-    print(json.dumps(payload, indent=2))
-    print("─" * 60 + "\n")
+    print(f"    transcript : {result.raw_transcript!r}")
 
-    # Example of how your real dispatch might look:
-    # for cmd in result.commands:
-    #     your_app.dispatch(cmd.intent, cmd.parameters)
+    for cmd in result.commands:
+        print(f"    intent     : {cmd.intent}")
+        if cmd.parameters:
+            print(f"    parameters : {json.dumps(cmd.parameters)}")
+        print(f"    layer      : {cmd.layer}  confidence={cmd.confidence:.2f}")
+        bridge.invoke_tool(cmd.intent, cmd.parameters)
+
+    print("─" * 60 + "\n")

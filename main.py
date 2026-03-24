@@ -1,15 +1,19 @@
 """
 main.py — Entry point for the voice control service.
 
-> note
-> Initially vibe-coded with Claude
-
 Run:
     python main.py
+
+Environment variables:
+    MQTT_BROKER     default: localhost
+    MQTT_PORT       default: 1883
+    MQTT_USERNAME   optional
+    MQTT_PASSWORD   optional
 
 Swap MockLLM for LlamaCppLLM when you have a model downloaded:
     llm = LlamaCppLLM("./models/Phi-3-mini-4k-instruct-q4.gguf")
 """
+import logging
 import queue
 import signal
 import sys
@@ -19,6 +23,12 @@ from audio.vad_loop import VADLoop
 from core.pipeline import VoiceControlPipeline
 from core.registry import CommandRegistry
 from llm.interface import MockLLM  # swap to LlamaCppLLM when ready
+from mqtt_bridge.bridge import MQTTBridge
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 
 def main():
@@ -26,39 +36,15 @@ def main():
     utterance_queue: queue.Queue = queue.Queue(maxsize=8)
     registry = CommandRegistry()
 
-    # ── Inject initial screen commands ────────────────────────────────────────
-    registry.update_commands({
-        "screen": "MainMenu",
-        "commands": [
-            {
-                "name": "go_back",
-                "examples": ["go back", "back", "previous", "return"],
-            },
-            {
-                "name": "select_all",
-                "examples": ["select all", "select everything"],
-            },
-            {
-                "name": "continue",
-                "examples": ["continue", "next", "proceed", "go ahead"],
-            },
-            {
-                "name": "print",
-                "parameters": ["count"],
-                "examples": [
-                    "print",
-                    "print it",
-                    "print {count}",
-                    "print {count} times",
-                    "print {count} copies",
-                ],
-            },
-        ],
-    })
+    # ── MQTT bridge ───────────────────────────────────────────────────────────
+    # The bridge owns two responsibilities:
+    #   1. Receive current_actions → call registry.update_commands()
+    #   2. Dispatch resolved commands → publish to do_action
+    bridge = MQTTBridge(registry)
 
-    # ── Build pipeline ────────────────────────────────────────────────────────
+    # ── Pipeline ──────────────────────────────────────────────────────────────
     llm = MockLLM()
-    pipeline = VoiceControlPipeline(registry, llm, utterance_queue)
+    pipeline = VoiceControlPipeline(registry, llm, utterance_queue, bridge)
     vad = VADLoop(utterance_queue)
 
     # ── Graceful shutdown ─────────────────────────────────────────────────────
@@ -66,49 +52,20 @@ def main():
         print("\n[Main] Shutting down…")
         vad.stop()
         pipeline.stop()
+        bridge.stop()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, handle_exit)
     signal.signal(signal.SIGTERM, handle_exit)
 
-    # ── Start ─────────────────────────────────────────────────────────────────
+    # ── Start (order matters: bridge before pipeline before VAD) ──────────────
+    bridge.start()
     pipeline.start()
     vad.start()
 
-    print("\n[Main] Voice control running. Press Ctrl+C to stop.\n")
+    print("\n[Main] Voice control running — waiting for actions on MQTT.")
+    print("[Main] Press Ctrl+C to stop.\n")
 
-    # Simulate a screen change after 10 seconds
-    # (in your app, call this whenever the screen changes)
-    def simulate_screen_change():
-        time.sleep(10)
-        print("\n[Main] Simulating screen change → PrintScreen\n")
-        registry.update_commands({
-            "screen": "PrintScreen",
-            "commands": [
-                {
-                    "name": "confirm_print",
-                    "examples": ["confirm", "yes", "print now"],
-                },
-                {
-                    "name": "cancel",
-                    "examples": ["cancel", "no", "stop", "abort"],
-                },
-                {
-                    "name": "set_copies",
-                    "parameters": ["count"],
-                    "examples": [
-                        "set copies to {count}",
-                        "{count} copies",
-                        "change to {count}",
-                    ],
-                },
-            ],
-        })
-
-    import threading
-    threading.Thread(target=simulate_screen_change, daemon=True).start()
-
-    # Keep main thread alive
     while True:
         time.sleep(1)
 
