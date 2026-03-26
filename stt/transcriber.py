@@ -11,23 +11,27 @@ CPU optimisation flags used:
   - beam_size=1  (greedy, halves compute vs beam=5)
   - int8 quantisation (halves memory + ~20% faster on AVX2)
   - language="en"  (skips language detection overhead)
+  - hotwords        (biases beam search toward known command vocabulary)
 """
 from __future__ import annotations
+
+import os
+import threading
 
 import numpy as np
 from faster_whisper import WhisperModel
 
 DEFAULT_MODEL = "small.en"
-
-# Languages to force; set None to auto-detect (slower)
 LANGUAGE = "en"
-
-# Beam size 1 = greedy decode, ~2× faster than default beam=5
+THREADS = os.getenv("WHISPER_THREADS", 8)
 BEAM_SIZE = 1
+NO_SPEECH_THRESHOLD = 0.6
+LOG_PROB_THRESHOLD = -1.0
 
-# Suppress tokens that would be non-speech noise artifacts
-NO_SPEECH_THRESHOLD = 0.6    # probability above which segment is marked non-speech
-LOG_PROB_THRESHOLD = -1.0    # discard low-confidence segments
+# How strongly Whisper favours hotwords (1–20; 5 is a good starting point).
+# Raise if short single-word commands are still misheard; lower if unrelated
+# speech starts getting pulled toward command words.
+HOTWORD_BIAS = 5.0
 
 
 class Transcriber:
@@ -36,6 +40,9 @@ class Transcriber:
 
     transcribe(audio_float32) → str | None
       Returns the transcript or None if no speech was detected.
+
+    update_hotwords(registry) is called automatically via a registry callback
+    whenever the active command set changes.
     """
 
     def __init__(self, model_size: str = DEFAULT_MODEL) -> None:
@@ -44,8 +51,36 @@ class Transcriber:
             model_size,
             device="cpu",
             compute_type="int8",      # fastest CPU mode; requires AVX2 (i7-6700K has it)
+            cpu_threads=THREADS,
         )
+        self._hotwords: str | None = None
+        self._lock = threading.Lock()
         print("[STT] Model ready.")
+
+    def update_hotwords(self, registry) -> None:
+        """
+        Rebuild the hotword string from the current registry.
+        Called on the paho/registry thread; access is protected by a lock.
+
+        Faster-Whisper accepts hotwords as a comma-separated string of phrases.
+        We include every unique word from every example, deduplicated.
+        Short words (≤ 2 chars) are excluded — they're too common to bias usefully.
+        """
+        words: set[str] = set()
+        for cmd in registry.commands:
+            for example in cmd.examples:
+                # Remove template slots entirely — {count}, {first}, etc.
+                import re
+                clean = re.sub(r"\{\w+\}", "", example)
+                for word in clean.lower().split():
+                    word = word.strip(".,!?")
+                    if len(word) > 2:
+                        words.add(word)
+
+        hotwords = ", ".join(sorted(words)) if words else None
+        with self._lock:
+            self._hotwords = hotwords
+        print(f"[STT] Hotwords updated: {hotwords}")
 
     def transcribe(self, audio: np.ndarray) -> str | None:
         """
@@ -57,14 +92,19 @@ class Transcriber:
         -------
         Lowercase stripped transcript, or None if only silence / non-speech.
         """
+        with self._lock:
+            hotwords = self._hotwords
+
         segments, info = self._model.transcribe(
             audio,
             language=LANGUAGE,
             beam_size=BEAM_SIZE,
             no_speech_threshold=NO_SPEECH_THRESHOLD,
             log_prob_threshold=LOG_PROB_THRESHOLD,
-            condition_on_previous_text=False,   # no context drift across utterances
-            word_timestamps=False,              # saves ~10 ms; enable if you need word-level timing
+            condition_on_previous_text=False,
+            word_timestamps=False,
+            hotwords=hotwords,
+            # hotword_weight=HOTWORD_BIAS,
         )
 
         parts = []

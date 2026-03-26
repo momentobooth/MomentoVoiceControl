@@ -56,6 +56,11 @@ class VoiceControlPipeline:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
+        # Keep hotwords in sync with the registry automatically
+        registry.on_update(self._transcriber.update_hotwords)
+        if registry.commands:
+            self._transcriber.update_hotwords(registry)
+
     def start(self) -> None:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
