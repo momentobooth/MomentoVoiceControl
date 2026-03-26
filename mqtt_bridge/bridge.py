@@ -72,15 +72,32 @@ def _translate_tools(raw_tools: list[dict]) -> dict:
         }
     """
     commands = []
+    type_map = {"integer": "number", "number": "number", "string": "string"}
+
+    def remove_characters(s: str) -> str:
+        to_remove = [",", ".", ";"]
+        for rm in to_remove:
+            s = s.replace(rm, "")
+        return s
+
     for tool in raw_tools:
         # Extract parameter names from the JSON Schema properties dict, if present.
         input_schema = json.loads(tool.get("inputSchema", "{}"))
         properties = input_schema.get("properties", {})
-        parameters = list(properties.keys())
+        parameters = {}
+        for key, value in properties.items():
+            value_type = value.get("type")
+            if value_type == "array":
+                sub_type = value.get("items", {}).get("type")
+                parameters[key] = {"type": type_map.get(sub_type), "is_array": True}
+            else:
+                parameters[key] = {"type": type_map.get(value_type), "is_array": False}
 
+        # Ensure that there is no punctuation in our examples
+        examples = [remove_characters(e) for e in tool.get("examples", [])]
         commands.append({
             "name": tool["name"],
-            "examples": tool.get("examples", []),
+            "examples": examples,
             "parameters": parameters,
         })
 

@@ -80,6 +80,16 @@ class VADLoop:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _run(self) -> None:
+        # Detach the Python debugger trace from this thread.  PyCharm's
+        # sys.settrace hook fires on every call into Torch C++ extensions,
+        # making the VAD loop 20-50x slower under the debugger.  Removing the
+        # trace here keeps the rest of the application (pipeline, resolver,
+        # executor) fully steppable while this hot-path thread runs at full
+        # speed.  You will not be able to set breakpoints inside _run itself,
+        # but there is nothing here worth stepping through anyway.
+        import sys
+        sys.settrace(None)
+
         pa = pyaudio.PyAudio()
         stream = pa.open(
             format=pyaudio.paInt16,

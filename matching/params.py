@@ -10,7 +10,8 @@ from typing import Any
 
 # Spoken number → int (extend as needed)
 _WORD_TO_NUM: dict[str, int] = {
-    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "zero": 0, "one": 1, "first": 1, "two": 2, "second": 2, "seconds": 2, "too": 2,
+    "three": 3, "third": 3, "four": 4, "fourth": 4,
     "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
     "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
     "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
@@ -32,36 +33,42 @@ def _word_number(text: str) -> int | None:
     return None
 
 
-def extract_number(text: str) -> int | None:
-    """Return the first number found in text (digit or word form)."""
+def extract_number(text: str, is_list: bool) -> int | list[int]:
+    """Return the numbers found in text (digit or word form). If `is_list` is True, return a list of numbers, else, return the first one."""
+    l = []
     # Digit first
-    m = re.search(r"\b(\d+)\b", text)
-    if m:
-        return int(m.group(1))
+    for m in re.finditer(r"\b(\d+)\b", text):
+        if not is_list:
+            return int(m.group(1))
+        l.append(int(m.group(1)))
     # Word form — scan each 1–2 word window
     words = text.split()
+    prev_candidate = ""
     for i in range(len(words)):
         for j in (1, 2):
             candidate = " ".join(words[i: i + j])
+            # Avoid adding the same number twice
+            if candidate == prev_candidate:
+                continue
+            prev_candidate = candidate
             n = _word_number(candidate)
             if n is not None:
-                return n
-    return None
+                if not is_list:
+                    return n
+                l.append(n)
+    return l
 
 
 # ── Template matching ──────────────────────────────────────────────────────────
 
-_EXTRACTORS = {
-    "count": extract_number,
+extractor_map = {
     "number": extract_number,
-    "amount": extract_number,
-    "quantity": extract_number,
 }
 
 
 def extract_parameters(
     transcript: str,
-    parameter_names: list[str],
+    parameters: dict[str,dict[str, Any]],
 ) -> dict[str, Any]:
     """
     Given a list of expected parameter names (from CommandDef.parameters),
@@ -70,11 +77,13 @@ def extract_parameters(
     Returns a dict with whatever was found (missing params are omitted).
     """
     result: dict[str, Any] = {}
-    for param in parameter_names:
-        extractor = _EXTRACTORS.get(param)
+    for param_name, param in parameters.items():
+        param_type = param.get("type", "")
+        extractor = extractor_map.get(param_type)
         if extractor is None:
             continue
-        value = extractor(transcript)
+        is_array = param.get("is_array", False)
+        value = extractor(transcript, is_array)
         if value is not None:
-            result[param] = value
+            result[param_name] = value
     return result

@@ -84,7 +84,7 @@ class CommandRegistry:
         ]
         for cb in self._on_update_callbacks:
             cb(self)
-        print(f"[Registry] Screen={self.screen!r}, {len(self.commands)} commands loaded.")
+        print(f"[Registry] Screen={self.screen!r}, {len(self.commands)} commands loaded: {[f"{{ name: {c.name}, params: {c.parameters} }}" for c in self.commands]}.")
 
     def on_update(self, callback) -> None:
         """Register a callback(registry) called after every update_commands()."""
