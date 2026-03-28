@@ -1,85 +1,64 @@
 """
-stt/transcriber.py -- Faster-Whisper speech-to-text.
+stt/transcriber.py -- Parakeet TDT via Docker API with Debug Logging.
 
-Model selection guide (CPU, no GPU):
-  tiny.en   ~80 MB    ~150-300 ms  -- default; good enough for short commands
-  small.en  ~240 MB   ~600-900 ms  -- better accuracy, noticeable latency hit
-  medium.en ~760 MB   ~1500+ ms    -- GPU strongly recommended at this size
-  large-v3  ~1.5 GB   impractical on CPU
-
-The dominant latency cost on short utterances is NOT the model size -- it is
-Whisper's fixed 30-second mel spectrogram window.  Even a 2-word command gets
-padded to 30 s before the encoder sees it.  Setting vad_filter=True tells
-Faster-Whisper to run a secondary internal VAD pass and feed only the
-speech-containing frames to the decoder, typically cutting latency 50-70%
-for short clips.
-
-CPU optimisation flags used:
-  - vad_filter=True  (skip silent padding -- biggest single win)
-  - beam_size=1      (greedy decode, ~2x faster than beam=5)
-  - int8 quantisation (halves memory, ~20% faster on AVX2)
-  - language="en"    (skips language detection overhead)
-  - hotwords         (biases beam search toward known command vocabulary)
+This version replaces local Faster-Whisper with a connection to the
+Parakeet TDT 0.6B v3 container and includes optional
+disk-logging for audio debugging.
 """
 from __future__ import annotations
 
+import io
 import os
 import re
+import time
 import threading
-
 import numpy as np
-from faster_whisper import WhisperModel
+from scipy.io import wavfile
+from openai import OpenAI
 
-DEFAULT_MODEL = "small.en"
-LANGUAGE = "en"
-THREADS = os.getenv("WHISPER_THREADS", 8)
-BEAM_SIZE = 1
-NO_SPEECH_THRESHOLD = 0.6
-LOG_PROB_THRESHOLD = -1.0
+# API Settings
+PARAKEET_BASE_URL = os.getenv("STT_URL", "http://localhost:5092/v1")
+PARAKEET_MODEL = "parakeet-tdt-0.6b-v3" #
+API_KEY = "sk-no-key-required"
 
-# Internal VAD filter -- skip silent padding before the decoder sees the audio.
-# This is the single biggest latency win for short utterances.
-VAD_FILTER = False
-
-# How strongly Whisper favours hotwords (1-20; 5 is a good starting point).
-# Raise if short single-word commands are still misheard; lower if unrelated
-# speech starts getting pulled toward command words.
-HOTWORD_BIAS = 5.0
-
+# Debug Settings: Set to a path (e.g., "debug_audio") to save incoming clips
+DEBUG_SAVE_PATH = os.getenv("STT_DEBUG_PATH", None)
 
 class Transcriber:
     """
-    Wraps Faster-Whisper; designed to be called from a single worker thread.
-
-    transcribe(audio_float32) -> str | None
-      Returns the transcript or None if no speech was detected.
-
-    update_hotwords(registry) is called automatically via a registry callback
-    whenever the active command set changes.
+    Wraps the Parakeet TDT API; designed for single worker thread usage.
     """
 
-    def __init__(self, model_size: str = DEFAULT_MODEL) -> None:
-        print(f"[STT] Loading Faster-Whisper {model_size} (CPU / int8)...")
-        self._model = WhisperModel(
-            model_size,
-            device="cpu",
-            compute_type="int8",      # fastest CPU mode; requires AVX2 (i7-6700K has it)
-            cpu_threads=THREADS,
+    def __init__(self, model_size: str = PARAKEET_MODEL) -> None:
+        print(f"[STT] Connecting to Parakeet TDT at {PARAKEET_BASE_URL}...")
+        self.client = OpenAI(
+            base_url=PARAKEET_BASE_URL,
+            api_key=API_KEY
         )
+        self._model = model_size
         self._hotwords: str | None = None
         self._lock = threading.Lock()
-        print("[STT] Model ready.")
+
+        if DEBUG_SAVE_PATH and not os.path.exists(DEBUG_SAVE_PATH):
+            os.makedirs(DEBUG_SAVE_PATH)
+            print(f"[STT] Debug mode active. Saving clips to: {DEBUG_SAVE_PATH}")
+
+        print("[STT] Client ready.")
+
+    def _save_debug_audio(self, audio_int16: np.ndarray) -> None:
+        """Helper to write the raw audio to disk for inspection."""
+        if not DEBUG_SAVE_PATH:
+            return
+
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = os.path.join(DEBUG_SAVE_PATH, f"rec_{timestamp}_{int(time.time())}.wav")
+        wavfile.write(filename, 16000, audio_int16)
 
     def update_hotwords(self, registry) -> None:
         """
         Rebuild the hotword string from the current registry.
-        Called on the paho/registry thread; access is protected by a lock.
-
-        Faster-Whisper accepts hotwords as a comma-separated string of phrases.
-        We include every unique word from every example, deduplicated.
-        Short words (<= 2 chars) are excluded -- too common to bias usefully.
         """
-        BASE_HOTWORDS = "one,first,two,second,three,third,four,fourth,"
+        BASE_HOTWORDS = "The one, first, two, second, three, third, four, fourth,"
 
         words: set[str] = set()
         for cmd in registry.commands:
@@ -97,42 +76,45 @@ class Transcriber:
 
     def transcribe(self, audio: np.ndarray) -> str | None:
         """
-        Parameters
-        ----------
-        audio : np.ndarray, float32, shape (N,), sample_rate=16000
-
-        Returns
-        -------
-        Lowercase stripped transcript, or None if only silence / non-speech.
+        Transcribes audio using the Parakeet TDT model via API.
         """
-        with self._lock:
-            hotwords = self._hotwords
+        # Convert float32 to int16
+        audio_int16 = (audio * 32767).astype(np.int16)
 
-        segments, info = self._model.transcribe(
-            audio,
-            language=LANGUAGE,
-            beam_size=BEAM_SIZE,
-            no_speech_threshold=NO_SPEECH_THRESHOLD,
-            log_prob_threshold=LOG_PROB_THRESHOLD,
-            condition_on_previous_text=False,
-            word_timestamps=False,
-            vad_filter=VAD_FILTER,
-            hotwords=hotwords,
-            # hotword_weight=HOTWORD_BIAS,
-        )
+        # Optional: Save to disk for debugging
+        self._save_debug_audio(audio_int16)
 
-        to_remove = [",", ".", ";"]
+        # Convert to WAV in memory for the API
+        byte_io = io.BytesIO()
+        wavfile.write(byte_io, 16000, audio_int16)
+        byte_io.seek(0)
+        byte_io.name = "audio.wav"
 
-        parts = []
-        for seg in segments:
-            text = seg.text.strip()
-            # Ensure there is no punctuation in our transcript
+        try:
+            with self._lock:
+                prompt = self._hotwords
+
+            response = self.client.audio.transcriptions.create(
+                model=self._model,
+                file=byte_io,
+                prompt=prompt,
+                response_format="text"
+            )
+
+            if not response:
+                return None
+
+            # Consistent cleanup logic
+            text = response.strip()
+            to_remove = [",", ".", ";"]
             for rm in to_remove:
                 text = text.replace(rm, "")
-            if text and not text.startswith(("[", "(")):
-                parts.append(text)
 
-        if not parts:
+            if text.startswith(("[", "(")):
+                return None
+
+            return text.lower().strip()
+
+        except Exception as e:
+            print(f"[STT] API Error: {e}")
             return None
-
-        return " ".join(parts).lower().strip()
