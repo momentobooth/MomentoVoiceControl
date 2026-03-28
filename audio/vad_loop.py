@@ -9,11 +9,12 @@ Tuning knobs
 SILENCE_GRACE_MS    : ms of silence after speech before we cut the utterance
 MIN_SPEECH_MS       : discard utterances shorter than this (avoids clicks)
 MAX_UTTERANCE_MS    : hard cap — forces a cut even if speech continues
+PRE_ROLL_MS         : ms of silence to buffer before speech starts
 """
 from __future__ import annotations
 import queue
 import threading
-import time
+from collections import deque
 
 import numpy as np
 import pyaudio
@@ -24,10 +25,13 @@ SAMPLE_RATE = 16_000          # Silero + Whisper both expect 16 kHz
 CHUNK_MS = 32                 # VAD window; must be 32 ms for Silero
 CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_MS / 1000)   # 512 samples
 
+PRE_ROLL_MS = 400  # Buffer 400ms of audio before speech starts
+PRE_ROLL_CHUNKS = PRE_ROLL_MS // CHUNK_MS
+
 SILENCE_GRACE_MS = 600        # 600 ms of silence → end of utterance
 SILENCE_GRACE_CHUNKS = SILENCE_GRACE_MS // CHUNK_MS
 
-MIN_SPEECH_MS = 300
+MIN_SPEECH_MS = 500
 MIN_SPEECH_CHUNKS = MIN_SPEECH_MS // CHUNK_MS
 
 MAX_UTTERANCE_MS = 10_000
@@ -100,6 +104,9 @@ class VADLoop:
         )
 
         speech_chunks: list[np.ndarray] = []
+        # This buffer keeps the most recent "silence" chunks
+        pre_roll = deque(maxlen=PRE_ROLL_CHUNKS)
+
         silence_count = 0
         in_speech = False
 
@@ -113,11 +120,18 @@ class VADLoop:
                 is_speech = prob >= VAD_THRESHOLD
 
                 if is_speech:
-                    in_speech = True
+                    if not in_speech:
+                        # START OF UTTERANCE: Grab the history from the pre_roll
+                        speech_chunks.extend(list(pre_roll))
+                        pre_roll.clear()
+                        in_speech = True
+
                     silence_count = 0
                     speech_chunks.append(pcm)
+
                 elif in_speech:
-                    speech_chunks.append(pcm)   # include trailing silence for context
+                    # We are currently in speech, but this specific chunk was quiet
+                    speech_chunks.append(pcm)
                     silence_count += 1
 
                     if silence_count >= SILENCE_GRACE_CHUNKS:
@@ -125,6 +139,9 @@ class VADLoop:
                         speech_chunks = []
                         silence_count = 0
                         in_speech = False
+                else:
+                    # Not in speech and hasn't started yet: just keep the history fresh
+                    pre_roll.append(pcm)
 
                 # Hard cap
                 if in_speech and len(speech_chunks) >= MAX_UTTERANCE_CHUNKS:

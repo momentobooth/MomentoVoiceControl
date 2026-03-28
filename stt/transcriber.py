@@ -56,23 +56,30 @@ class Transcriber:
 
     def update_hotwords(self, registry) -> None:
         """
-        Rebuild the hotword string from the current registry.
+        Rebuild the prompt. For Parakeet TDT, a focused list of
+        phrases or a 'context sentence' often works better than
+        a raw comma-separated dump of every single word.
         """
-        BASE_HOTWORDS = "The one, first, two, second, three, third, four, fourth,"
+        # Strategy: Use a prefix that tells the model what to expect.
+        # This helps the Transducer set the right context.
+        prefix = "The following are voice commands: "
 
-        words: set[str] = set()
+        unique_commands: set[str] = set()
         for cmd in registry.commands:
             for example in cmd.examples:
-                clean = re.sub(r"\{\w+\}", "", example)
-                for word in clean.lower().split():
-                    word = word.strip(".,!?")
-                    if len(word) > 2:
-                        words.add(word)
+                # Clean placeholders like {device}
+                clean = re.sub(r"\{\w+\}", "", example).lower().strip()
+                if len(clean) > 2:
+                    unique_commands.add(clean)
 
-        hotwords = BASE_HOTWORDS + ", ".join(sorted(words))
+        # We sort them to keep the prompt consistent
+        command_list = ", ".join(sorted(unique_commands))
+
         with self._lock:
-            self._hotwords = hotwords
-        print(f"[STT] Hotwords updated: {hotwords}")
+            # We wrap it in a 'contextual' sentence
+            self._hotwords = f"{prefix}{command_list}."
+
+        print(f"[STT] Context prompt updated: {self._hotwords}")
 
     def transcribe(self, audio: np.ndarray) -> str | None:
         """
