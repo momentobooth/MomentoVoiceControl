@@ -40,8 +40,14 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
-MQTT_TOPIC_ACTIONS = "momentobooth/current_actions"
-MQTT_TOPIC_EXECUTE = "momentobooth/do_action"
+MQTT_MB_BASE_TOPIC = os.getenv("MQTT_BASE_TOPIC", "momentobooth")
+
+MQTT_BASE_TOPIC = f"{MQTT_MB_BASE_TOPIC}/actions"
+MQTT_TOPIC_ACTIONS = f"{MQTT_BASE_TOPIC}/list"
+MQTT_TOPIC_EXECUTE = f"{MQTT_BASE_TOPIC}/execute"
+MQTT_TOPIC_LISTENS = f"{MQTT_BASE_TOPIC}/listening"
+
+MQTT_TOPIC_NOTIFY = f"{MQTT_MB_BASE_TOPIC}/notify"
 
 
 def _translate_tools(raw_tools: list[dict]) -> dict:
@@ -128,6 +134,8 @@ class MQTTBridge:
         self._client.on_message = self._on_message
         self._client.on_disconnect = self._on_disconnect
 
+        self.is_listening = False
+
     # ── MQTT callbacks (paho network thread) ──────────────────────────────────
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
@@ -137,6 +145,7 @@ class MQTTBridge:
         log.info("MQTT connected to %s:%s", MQTT_BROKER, MQTT_PORT)
         client.subscribe(MQTT_TOPIC_ACTIONS, qos=1)
         client.subscribe(MQTT_TOPIC_EXECUTE + "/result", qos=1)
+        client.subscribe(MQTT_TOPIC_LISTENS, qos=1)
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         log.warning("MQTT disconnected: %s", reason_code)
@@ -149,6 +158,8 @@ class MQTTBridge:
             self._handle_actions(payload)
         elif topic == MQTT_TOPIC_EXECUTE + "/result":
             self._handle_result(payload)
+        elif topic == MQTT_TOPIC_LISTENS:
+            self._handle_listening_state(payload)
 
     def _handle_actions(self, payload: str) -> None:
         try:
@@ -172,6 +183,11 @@ class MQTTBridge:
             pretty = payload
         log.info("Tool result received:\n%s", pretty)
         print(f"[MQTT] Tool result:\n{pretty}\n")
+
+    def _handle_listening_state(self, payload: str) -> None:
+        """Log the listening state to the console."""
+        self.is_listening = payload.lower() == "true"
+        log.debug(f"Listening state changed: {self.is_listening}")
 
     # ── Public API (main / pipeline thread) ───────────────────────────────────
 
@@ -197,6 +213,10 @@ class MQTTBridge:
         The correlation_id is included so the server can echo it back in the
         result message, which we then log in _handle_result.
         """
+        if not self.is_listening:
+            log.warning("Not listening for tool invocations")
+            return
+
         payload = json.dumps({
             "tool": name,
             "arguments": arguments,
@@ -204,3 +224,8 @@ class MQTTBridge:
         })
         self._client.publish(MQTT_TOPIC_EXECUTE, payload, qos=1)
         log.info("Published tool invocation: tool=%s", name)
+
+    def show_notification(self, message: str, duration: int = 500) -> None:
+        payload = json.dumps({"message": message, "duration": duration})
+        self._client.publish(MQTT_TOPIC_NOTIFY, payload, qos=1)
+        log.info("Published notification: %s", message)

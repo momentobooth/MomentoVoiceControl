@@ -27,6 +27,7 @@ from core.executor import execute
 from core.registry import CommandRegistry, CommandResult
 from stt.transcriber import Transcriber
 from matching.resolver import CommandResolver
+from mqtt_bridge.bridge import MQTTBridge
 
 
 class VoiceControlPipeline:
@@ -46,7 +47,7 @@ class VoiceControlPipeline:
         registry: CommandRegistry,
         llm_interface,
         utterance_queue: queue.Queue,
-        bridge,
+        bridge: MQTTBridge,
     ) -> None:
         self._registry = registry
         self._q = utterance_queue
@@ -81,13 +82,24 @@ class VoiceControlPipeline:
             except queue.Empty:
                 continue
 
+            if not self._bridge.is_listening:
+                print("[Pipeline] Main app not listening, skipping processing of utterance.")
+                continue
+
             t0 = time.perf_counter()
 
             # 1. Transcribe
             transcript = self._transcriber.transcribe(audio)
             if not transcript:
                 print("[Pipeline] No speech detected, skipping.")
+                self._bridge.show_notification("No command", 500)
                 continue
+
+            if not self._bridge.is_listening:
+                print("[Pipeline] Main app not listening, skipping processing of transcript.")
+                continue
+
+            self._bridge.show_notification(f"Heard:\n💬 {transcript}", 1000)
 
             t1 = time.perf_counter()
             print(f"[Pipeline] Transcript ({(t1-t0)*1000:.0f} ms): {transcript!r}")

@@ -45,7 +45,7 @@ def main():
     # ── Pipeline ──────────────────────────────────────────────────────────────
     llm = MockLLM()
     pipeline = VoiceControlPipeline(registry, llm, utterance_queue, bridge)
-    vad = VADLoop(utterance_queue)
+    vad = VADLoop(utterance_queue, bridge)
 
     # ── Graceful shutdown ─────────────────────────────────────────────────────
     def handle_exit(sig, frame):

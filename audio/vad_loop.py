@@ -20,6 +20,8 @@ import numpy as np
 import pyaudio
 import torch
 
+from mqtt_bridge.bridge import MQTTBridge
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 SAMPLE_RATE = 16_000          # Silero + Whisper both expect 16 kHz
 CHUNK_MS = 32                 # VAD window; must be 32 ms for Silero
@@ -62,13 +64,14 @@ class VADLoop:
         vad.stop()
     """
 
-    def __init__(self, utterance_queue: queue.Queue) -> None:
+    def __init__(self, utterance_queue: queue.Queue, bridge: MQTTBridge) -> None:
         self._q = utterance_queue
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._model = _load_silero_vad()
         self._model.eval()
         print("[VAD] Silero model ready.")
+        self._bridge = bridge
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -113,6 +116,8 @@ class VADLoop:
         try:
             while not self._stop_event.is_set():
                 raw = stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+                if not self._bridge.is_listening:
+                    continue
                 pcm = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
                 tensor = torch.from_numpy(pcm)
 
@@ -125,6 +130,7 @@ class VADLoop:
                         speech_chunks.extend(list(pre_roll))
                         pre_roll.clear()
                         in_speech = True
+                        self._bridge.show_notification("👂 Listening...", 1500)
 
                     silence_count = 0
                     speech_chunks.append(pcm)
@@ -160,6 +166,7 @@ class VADLoop:
             return
         audio = np.concatenate(chunks)
         try:
+            self._bridge.show_notification("🤖 Processing...")
             self._q.put_nowait(audio)
         except queue.Full:
             print("[VAD] Warning: utterance queue full, dropping chunk.")

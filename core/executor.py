@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 
 from core.registry import CommandResult
+from mqtt_bridge.bridge import MQTTBridge
 
 
-def execute(result: CommandResult, bridge) -> None:
+def execute(result: CommandResult, bridge: MQTTBridge) -> None:
     """
     Dispatch every command in the result through the MQTT bridge.
 
