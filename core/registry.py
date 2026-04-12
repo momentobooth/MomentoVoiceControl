@@ -31,6 +31,7 @@ class ResolvedCommand:
     parameters: dict[str, Any] = field(default_factory=dict)
     confidence: float = 1.0
     layer: str = "unknown"   # "fuzzy" | "embedding" | "llm"
+    reasoning: str = ""
 
 
 @dataclass

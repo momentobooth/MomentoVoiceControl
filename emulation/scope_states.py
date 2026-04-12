@@ -4,12 +4,17 @@ from enum import StrEnum
 class ScopeNames(StrEnum):
     START_SCREEN = "Start Screen"
     NAVIGATION_SCREEN = "Navigation Screen"
+    SINGLE_CAPTURE_SCREEN = "Single Capture Screen"
+    MULTI_CAPTURE_SCREEN = "Multi Capture Screen"
     COLLAGE_MAKER_SCREEN = "Collage Maker Screen"
     GALLERY = "Gallery"
     PHOTO_DETAILS_SCREEN = "Photo Details Screen"
     PRINT_DIALOG = "Print Dialog"
     SHARE_SCREEN = "Share Screen"
+    QR_DIALOG = "QR Dialog"
     LANGUAGE_DIALOG = "Language Dialog"
+
+_EMPTY_SCHEMA = "{ \"type\": \"object\", \"additionalProperties\": false }"
 
 
 SCOPE_STATES = {
@@ -19,7 +24,7 @@ SCOPE_STATES = {
             "title": "Start",
             "description": "Begin the photo booth experience.",
             "examples": ["start", "begin", "let's go", "proceed", "continue"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.NAVIGATION_SCREEN
         }
     ],
@@ -29,23 +34,23 @@ SCOPE_STATES = {
             "title": "Single Photo",
             "description": "Take a single photo.",
             "examples": ["single", "single capture", "single photo", "single picture", "take a photo"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
-            "next_state": ScopeNames.SHARE_SCREEN
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.SINGLE_CAPTURE_SCREEN
         },
         {
             "name": "collage",
             "title": "Collage",
             "description": "Shoot multiple photos and create a collage from them.",
             "examples": ["collage", "collage capture", "collage photo", "collage picture", "take a collage"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
-            "next_state": ScopeNames.COLLAGE_MAKER_SCREEN
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.MULTI_CAPTURE_SCREEN
         },
         {
             "name": "gallery",
             "title": "Gallery",
             "description": "View the previously captured photos.",
             "examples": ["gallery", "view gallery", "see photos", "browse images"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.GALLERY
         },
         {
@@ -53,10 +58,12 @@ SCOPE_STATES = {
             "title": "Language",
             "description": "Open the language selection dialog.",
             "examples": ["language", "change language", "select language", "set language", "open language settings"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.LANGUAGE_DIALOG
         }
     ],
+    ScopeNames.SINGLE_CAPTURE_SCREEN: [],
+    ScopeNames.MULTI_CAPTURE_SCREEN: [],
     ScopeNames.COLLAGE_MAKER_SCREEN: [
         {
             "name": "select_pictures",
@@ -74,7 +81,7 @@ SCOPE_STATES = {
             "title": "Continue",
             "description": "Proceed to the share screen.",
             "examples": ["continue", "next", "go on", "proceed", "keep going", "done", "finished"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.SHARE_SCREEN
         },
         {
@@ -83,7 +90,7 @@ SCOPE_STATES = {
             "description": "Select all captured pictures",
             "examples": ["select all pictures", "select all photos", "select all images", "select all",
                          "all of them", "all pictures", "use all pictures"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.COLLAGE_MAKER_SCREEN
         }
     ],
@@ -93,7 +100,7 @@ SCOPE_STATES = {
             "title": "Open Latest Picture",
             "description": "View the most recently captured picture.",
             "examples": ["latest", "most recent", "last photo", "last picture", "open latest"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.PHOTO_DETAILS_SCREEN
         },
         {
@@ -101,7 +108,7 @@ SCOPE_STATES = {
             "title": "Back",
             "description": "Return to the previous screen.",
             "examples": ["back", "previous", "go back", "return", "previous screen"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.NAVIGATION_SCREEN
         }
     ],
@@ -111,7 +118,7 @@ SCOPE_STATES = {
             "title": "Back",
             "description": "Return to the gallery screen.",
             "examples": ["back", "previous", "go back", "return", "previous screen"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.GALLERY
         },
         {
@@ -119,8 +126,8 @@ SCOPE_STATES = {
             "title": "Get QR Code",
             "description": "Generate a QR code for sharing the photo.",
             "examples": ["get qr code", "show qr code", "generate qr code", "share photo"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
-            "next_state": ScopeNames.PHOTO_DETAILS_SCREEN
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.QR_DIALOG
         },
         {
             "name": "open_print_dialog",
@@ -128,7 +135,7 @@ SCOPE_STATES = {
             "description": "Open the print dialog.",
             "examples": ["print", "print it", "print photo", "print picture", "i want a print", "i want to print",
                          "let's print"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.PRINT_DIALOG
         }
     ],
@@ -138,14 +145,16 @@ SCOPE_STATES = {
             "title": "Cancel",
             "description": "Presses the cancel button in the print dialog.",
             "examples": ["cancel", "stop", "abort", "never mind", "forget it"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }"
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.SHARE_SCREEN
         },
         {
             "name": "set_print_count",
             "title": "Set Print Count",
             "description": "Sets the number of copies to print.",
             "examples": ["print five pictures", "set three copies", "two times"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }"
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.PRINT_DIALOG
         },
         {
             "name": "print",
@@ -153,7 +162,8 @@ SCOPE_STATES = {
             "description": "Presses the print button in the print dialog.",
             "examples": ["print", "print it", "print photo", "print picture", "i want a print", "i want to print",
                          "let's print"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }"
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.PRINT_DIALOG
         }
     ],
     ScopeNames.SHARE_SCREEN: [
@@ -162,7 +172,7 @@ SCOPE_STATES = {
             "title": "Retake Photo",
             "description": "Retake the current photo.",
             "examples": ["retake", "take again", "try again", "do it again"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.COLLAGE_MAKER_SCREEN
         },
         {
@@ -170,15 +180,15 @@ SCOPE_STATES = {
             "title": "Get QR Code",
             "description": "Generate a QR code for sharing the photo.",
             "examples": ["get qr code", "show qr code", "generate qr code", "share photo"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
-            "next_state": ScopeNames.SHARE_SCREEN
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.QR_DIALOG
         },
         {
             "name": "print",
             "title": "Print Photo",
             "description": "Open the print dialog.",
             "examples": ["print", "print it", "print photo", "print picture", "i want a print", "i want to print",
-                         "let's print"], "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+                         "let's print"], "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.PRINT_DIALOG
         },
         {
@@ -186,7 +196,7 @@ SCOPE_STATES = {
             "title": "Continue",
             "description": "Proceed to the start screen.",
             "examples": ["continue", "next", "go on", "proceed", "keep going", "done", "finished"],
-            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }",
+            "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.START_SCREEN
         }
     ],
@@ -198,6 +208,32 @@ SCOPE_STATES = {
             "examples": ['set language to {language_code}', 'set language to {language_code}', 'set language to {language_code}'],
             "inputSchema": '{ "type": "object", "properties": { "language_code": { "type": "string", "description": "The ISO 639-1 code for the language to set" } }, "required": ["language_code"], "additionalProperties": false }',
             "next_state": ScopeNames.NAVIGATION_SCREEN
+        },
+        {
+            "name": "close",
+            "title": 'Close Dialog',
+            "description": 'Close the language dialog.',
+            "examples": ['close', 'cancel', 'dismiss'],
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.NAVIGATION_SCREEN
+        }
+    ],
+    ScopeNames.QR_DIALOG: [
+        {
+            "name": "redo_upload",
+            "title": 'Redo Upload',
+            "description": "Start the upload process again to get a new QR code",
+            "examples": ['redo upload', 'give me another one', 'upload again'],
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.QR_DIALOG
+        },
+        {
+            "name": "close",
+            "title": 'Close Dialog',
+            "description": 'Close the QR sharing dialog.',
+            "examples": ['done', 'close', 'cancel', 'dismiss'],
+            "inputSchema": _EMPTY_SCHEMA,
+            "next_state": ScopeNames.SHARE_SCREEN
         }
     ]
 }

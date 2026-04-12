@@ -150,11 +150,14 @@ class LMStudioLLM:
                 selected_tools.append(tool_call['intent'])
                 if tool_call['confidence'] < self.min_confidence:
                     print(f"[Layer3] LLM reported an insufficient confidence of {tool_call['confidence']} for {tool_call['intent']}")
-                yield ResolvedCommand(intent=tool_call['intent'], parameters=tool_call.get('parameters', {}), layer="llm")
+                yield ResolvedCommand(intent=tool_call['intent'], parameters=tool_call.get('parameters', {}), layer="llm", confidence=tool_call['confidence'], reasoning=tool_call['analysis'])
                 if len(selected_tools) >= self.max_tool_calls:
                     print(f"[Layer3] Maximum number of tools reached. Stopping execution.")
                     return
                 next_available = add_no_tool(next(available))
+                # When no actions are available, no use in running the model further
+                if len(next_available) < 2:
+                    return
                 chat.add_user_message(f"Executed: {selected_tools}\nOriginal transcript: {transcript}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:")
 
                 response = self._model.respond(
