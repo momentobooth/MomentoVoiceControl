@@ -18,14 +18,24 @@ def get_schema(available: list[dict]) -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
+            "analysis": {
+                "type": "string",
+                "minLength": 1,
+                # "maxLength": 1000
+            },
             "intent": {
                 "enum": intent_options,
             },
             "parameters": {
                 "type": "object",
             },
+            "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+            }
         },
-        "required": ["intent", "parameters"],
+        "required": ["analysis", "intent", "parameters", "confidence"],
         "additionalProperties": False,
     }
 
@@ -39,23 +49,34 @@ _NO_TOOL = {
 # ── Prompt template ───────────────────────────────────────────────────────────
 
 _SYSTEM = """\
-You are a voice command parser for a kiosk application.
-Given a spoken transcript and a list of available commands, extract all commands 
-that the user intended to trigger. Respond ONLY with valid JSON, no prose.
+## Role
+You are a voice command controller for a photo kiosk. Your task is to process a transcript by extracting ONE command at a time that matches the user's intent and the currently available commands.
 
-Output format:
-{"intent": "<command_name>", "parameters": {"param": value}}
+## Process Logic
+1. **Analyze:** Examine the full transcript and the list of available commands.
+2. **Reason:** Determine which part of the transcript hasn't been executed yet and which command matches that intent.
+3. **Select:** Pick the single most appropriate command.
+4. **Completion:** If all user requests in the transcript are fulfilled, or if the transcript contains no relevant commands, use 'do_nothing_and_finish'.
 
-Rules:
-- Only use command names from the provided list.
-- If the transcript contains no commands, return {"intent": "do_nothing_and_finish", "parameters": {}}.
-- Extract multiple commands if the user said several things (e.g. "select all and continue").
-- In case there are multiple commands, you will execute one command at a time, and then be presented with the new commands available after the command is executed.
-- For parameters, extract numeric values when present.
+## Rules
+- **One at a time:** Respond with exactly one JSON object per turn.
+- **State Awareness:** You are part of a loop. After you emit a command, the system executes it and calls you again with the updated state and the same transcript. 
+- **Sequential Execution:** If a transcript contains multiple steps (e.g., "Take a photo and then open the gallery"), extract the first logical step first.
+- **Strictly Reactive:** Do NOT suggest or predict the next logical step. Only extract commands that are explicitly requested in the provided transcript.
+- **Exhaustion:** If the transcript was "Start" and you already emitted the "start" command, the transcript is now exhausted. Your only valid response is 'do_nothing_and_finish'.
+
+## Output Format
+You must respond with a JSON object following this structure:
+{
+  "analysis": "Brief explanation of why this command was chosen based on the transcript and history.",
+  "intent": "command_name",
+  "parameters": {},
+  "confidence": 0.0-1.0
+}
 """
 
 def add_no_tool(initial_list: list[dict]) -> list[dict]:
-    return [_NO_TOOL] + list(initial_list)
+    return list(initial_list) + [_NO_TOOL]
 
 
 def _build_prompt(transcript: str, available: list[dict]) -> str:
@@ -70,12 +91,15 @@ def _build_prompt(transcript: str, available: list[dict]) -> str:
 # ── LM Studio implementation using lmstudio package ──────────────────────────
 
 class LMStudioLLM:
-    def __init__(self, model_name: str = "qwen3.5-2b", max_tool_calls = 3) -> None:
+    def __init__(self, model_name: str = "qwen3.5-2b", max_tool_calls = 3, min_confidence = 0.7) -> None:
         """
         Instantiate the LM Studio connection and load the given model.
         :param model_name: Which LLM to use for inference
+        :param max_tool_calls: Maximum number of tools allowed to be triggered by one transcription
+        :param min_confidence: Minimum confidence required to trigger a tool call
         """
         self.max_tool_calls = max_tool_calls
+        self.min_confidence = min_confidence
         try:
             self._model_name = model_name
             print(f"[Layer3] Loading LM Studio model {model_name}...")
@@ -104,7 +128,7 @@ class LMStudioLLM:
         """
         first_available = add_no_tool(next(available))
         prompt = _build_prompt(transcript, first_available)
-        tool_calls = 0
+        selected_tools = []
 
         try:
             # Use chat completion with structured output enforcement
@@ -119,22 +143,26 @@ class LMStudioLLM:
                 config=config,
                 response_format=get_schema(first_available),
             )
+            chat.add_assistant_response(response)
 
             tool_call = response.parsed
             while tool_call['intent'] != _NO_TOOL['name']:
-                tool_calls = tool_calls + 1
+                selected_tools.append(tool_call['intent'])
+                if tool_call['confidence'] < self.min_confidence:
+                    print(f"[Layer3] LLM reported an insufficient confidence of {tool_call['confidence']} for {tool_call['intent']}")
                 yield ResolvedCommand(intent=tool_call['intent'], parameters=tool_call.get('parameters', {}), layer="llm")
-                if tool_calls >= self.max_tool_calls:
+                if len(selected_tools) >= self.max_tool_calls:
                     print(f"[Layer3] Maximum number of tools reached. Stopping execution.")
                     return
                 next_available = add_no_tool(next(available))
-                chat.add_user_message(f"Available commands:\n{next_available}\n\nOutput JSON:")
+                chat.add_user_message(f"Executed: {selected_tools}\nOriginal transcript: {transcript}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:")
 
                 response = self._model.respond(
                     chat,
                     config=config,
                     response_format=get_schema(next_available),
                 )
+                chat.add_assistant_response(response)
                 tool_call = response.parsed
 
 
