@@ -141,6 +141,13 @@ SCOPE_STATES = {
             "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }"
         },
         {
+            "name": "set_print_count",
+            "title": "Set Print Count",
+            "description": "Sets the number of copies to print.",
+            "examples": ["print five pictures", "set three copies", "two times"],
+            "inputSchema": "{ \"type\": \"object\", \"additionalProperties\": false }"
+        },
+        {
             "name": "print",
             "title": "Print",
             "description": "Presses the print button in the print dialog.",
