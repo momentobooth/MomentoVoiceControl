@@ -7,12 +7,13 @@ torchaudio>=2.0.0
 faster-whisper>=1.0.0
 
 # Command matching
-rapidfuzz>=3.0.0
-sentence-transformers>=2.7.0   # all-MiniLM-L6-v2 (~80MB)
+rapidfuzz>=3.14.5
+sentence-transformers>=5.4.0   # all-MiniLM-L6-v2 (~80MB)
 
 # LLM fallback (choose one backend)
+lmstudio>=1.6.0b1
 #llama-cpp-python>=0.2.0        # llama.cpp Python bindings
 
 # Utilities
-numpy>=1.24.0
+numpy>=2.4.4
 paho-mqtt~=2.1.0

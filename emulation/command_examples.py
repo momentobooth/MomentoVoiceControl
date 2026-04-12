@@ -15,7 +15,7 @@ class CommandExample:
     tool_invocations: list[ToolInvocation]
 
 
-COMMAND_EXAMPLES = [
+COMMAND_EXAMPLES: list[CommandExample] = [
     CommandExample(ScopeNames.START_SCREEN, "Start", [ToolInvocation("start", {})]),
     CommandExample(ScopeNames.START_SCREEN, "Plus to start. Okay, let's start.", [ToolInvocation("start", {})]),
     CommandExample(ScopeNames.NAVIGATION_SCREEN, "Take a picture.", [ToolInvocation("single_photo", {})]),

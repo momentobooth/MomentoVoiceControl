@@ -37,8 +37,8 @@ class StateMachine:
     def execute(self, tool: str, arguments: dict):
         tools = {t['name']: t for t in self.state}
         tool_def = tools[tool]
-        next_state_name: ScopeNames = tool_def['next_state']
-        print(f"Executing tool: {tool} with arguments: {arguments} in scope {self.state_name}, navigating to {next_state_name.value}")
+        next_state_name: ScopeNames = tool_def.get('next_state', self.state_name)
+        print(f"[State machine] Executing tool: {tool} with arguments: {arguments} in scope {self.state_name}, navigating to {next_state_name.value}")
         self.call_history.append({"tool": tool, "arguments": arguments})
         self.state_name = next_state_name
         self.state = self.states[next_state_name]
