@@ -40,63 +40,58 @@ def run_command_example_test(
     """Test a single command example against the LM Studio interface."""
 
     # Get initial available tools from current state
-    initial_tools = state_machine.get_tools()
+    initial_scope_info = state_machine.get_scope_info()
 
     # Create generator for available tools that updates as commands are executed
-    def tool_generator():
-        yield initial_tools
+    def scope_info_generator():
+        yield initial_scope_info
         while True:
-            next_state_tools = state_machine.get_tools()
+            next_state_tools = state_machine.get_scope_info()
             yield next_state_tools
-
-    # Initialize the generator
-    tools_gen = tool_generator()
 
     # Start timing
     start_time = time.time()
+    resolved_commands = []
 
     try:
         # Process all tool invocations through LLM interface
         executed_tools = []
         actual_tools_found = []
 
-        for i, tool_invocation in enumerate(command_example.tool_invocations):
-            if not tool_invocation.name or tool_invocation.name == "do_nothing_and_finish":
-                continue
+        # for i, tool_invocation in enumerate(command_example.tool_invocations):
 
-            print(f"Processing command {i + 1}: {tool_invocation.name} with parameters {tool_invocation.parameters}")
+            # # Get available tools for this step
+            # current_tools = next(tools_gen)
+            # tool_names = [t['name'] for t in current_tools]
+            #
+            # # Actually use the LLM interface to extract intent
+            # print(f"  Available tools: {tool_names}")
 
-            # Get available tools for this step
-            current_tools = next(tools_gen)
-            tool_names = [t['name'] for t in current_tools]
+        # Use LM Studio interface to parse command
+        try:
+            response_generator = llm_interface.extract_intent(
+                command_example.transcript,
+                scope_info_generator()
+            )
 
-            # Actually use the LLM interface to extract intent
-            print(f"  Available tools: {tool_names}")
+            # Process each resolved command in order
+            for resolved_cmd in response_generator:
+                if resolved_cmd.intent != "do_nothing_and_finish":
+                    resolved_commands.append(resolved_cmd)
+                    actual_tools_found.append(resolved_cmd.intent)
 
-            # Use LM Studio interface to parse command
-            try:
-                response_generator = llm_interface.extract_intent(
-                    command_example.transcript,
-                    tool_generator()
-                )
+                    print(f"  LLM detected: {resolved_cmd.intent}")
 
-                # Process each resolved command in order
-                for resolved_cmd in response_generator:
-                    if resolved_cmd.intent != "do_nothing_and_finish":
-                        actual_tools_found.append(resolved_cmd.intent)
+                    # Execute the tool through state machine to update available tools
+                    try:
+                        state_machine.execute(resolved_cmd.intent, resolved_cmd.parameters)
+                        executed_tools.append(resolved_cmd.intent)
+                        print(f"  Executed tool: {resolved_cmd.intent}")
+                    except Exception as e:
+                        print(f"  Failed to execute tool {resolved_cmd.intent}: {e}")
 
-                        print(f"  LLM detected: {resolved_cmd.intent}")
-
-                        # Execute the tool through state machine to update available tools
-                        try:
-                            state_machine.execute(resolved_cmd.intent, resolved_cmd.parameters)
-                            executed_tools.append(resolved_cmd.intent)
-                            print(f"  Executed tool: {resolved_cmd.intent}")
-                        except Exception as e:
-                            print(f"  Failed to execute tool {resolved_cmd.intent}: {e}")
-
-            except Exception as e:
-                print(f"  Error in LLM processing: {e}")
+        except Exception as e:
+            print(f"  Error in LLM processing: {e}")
 
         end_time = time.time()
         execution_time = end_time - start_time
@@ -185,6 +180,7 @@ def main():
     print("\nDetailed Results:")
     for i, result in enumerate(results):
         print(f"Test {i+1}: '{result['command']}' -> Precision: {result['precision']:.2%}, Time: {result['execution_time']:.4f}s")
+        print(f"\tExpected tools: {result['expected_tools']}, Actual tools found: {result['actual_tools']}")
 
 if __name__ == "__main__":
     main()

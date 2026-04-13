@@ -12,6 +12,8 @@ from typing import Any, Generator
 import lmstudio as lms
 
 from core.registry import ResolvedCommand
+from emulation.state_machine import ScopeInfo
+
 
 def get_schema(available: list[dict]) -> dict[str, Any]:
     intent_options: list[str] = [tool['name'] for tool in available]
@@ -62,7 +64,7 @@ You are a voice command controller for a photo kiosk. Your task is to process a 
 - **One at a time:** Respond with exactly one JSON object per turn.
 - **State Awareness:** You are part of a loop. After you emit a command, the system executes it and calls you again with the updated state and the same transcript. 
 - **Sequential Execution:** If a transcript contains multiple steps (e.g., "Take a photo and then open the gallery"), extract the first logical step first.
-- **Strictly Reactive:** Do NOT suggest or predict the next logical step. Only extract commands that are explicitly requested in the provided transcript.
+- **No Prediction:** Do NOT suggest or predict the next logical step. Only extract commands that are explicitly requested in the provided transcript.
 - **Exhaustion:** If the transcript was "Start" and you already emitted the "start" command, the transcript is now exhausted. Your only valid response is 'do_nothing_and_finish'.
 
 ## Output Format
@@ -70,22 +72,13 @@ You must respond with a JSON object following this structure:
 {
   "analysis": "Brief explanation of why this command was chosen based on the transcript and history.",
   "intent": "command_name",
-  "parameters": {},
+  "parameters": { parameters according to the command's inputSchema },
   "confidence": 0.0-1.0
 }
 """
 
 def add_no_tool(initial_list: list[dict]) -> list[dict]:
     return list(initial_list) + [_NO_TOOL]
-
-
-def _build_prompt(transcript: str, available: list[dict]) -> str:
-    cmds_json = json.dumps(available, indent=2)
-    return (
-        f"Available commands:\n{cmds_json}\n\n"
-        f'Transcript: "{transcript}"\n\n'
-        f"Output JSON:"
-    )
 
 
 # ── LM Studio implementation using lmstudio package ──────────────────────────
@@ -116,7 +109,7 @@ class LMStudioLLM:
             raise
 
     def extract_intent(
-            self, transcript: str, available: Generator[list[dict]]
+            self, transcript: str, available: Generator[ScopeInfo]
     ) -> Generator[ResolvedCommand]:
         """
         Extracts the actions that the user intends to trigger based on the transcript of their speech.
@@ -126,18 +119,20 @@ class LMStudioLLM:
         :param available: generator supplying currently available commands
         :return:
         """
-        first_available = add_no_tool(next(available))
-        prompt = _build_prompt(transcript, first_available)
+        first_scope_info = next(available)
+        first_available = add_no_tool(first_scope_info.tools)
         selected_tools = []
 
         try:
-            # Use chat completion with structured output enforcement
             chat = lms.Chat(_SYSTEM)
-            chat.add_user_message(prompt)
+            chat.add_user_message(
+                f"Transcript: \"{transcript}\"\nCurrent scope: {first_scope_info.name}\nAvailable commands:\n{json.dumps(first_available, indent=2)}\n\nOutput JSON:"
+            )
             config = {
                 "temperature": 0.0,
                 "max_tokens": 256,
             }
+            # Use chat completion with structured output enforcement
             response = self._model.respond(
                 chat,
                 config=config,
@@ -154,11 +149,14 @@ class LMStudioLLM:
                 if len(selected_tools) >= self.max_tool_calls:
                     print(f"[Layer3] Maximum number of tools reached. Stopping execution.")
                     return
-                next_available = add_no_tool(next(available))
+                next_scope_info = next(available)
+                next_available = add_no_tool(next_scope_info.tools)
                 # When no actions are available, no use in running the model further
                 if len(next_available) < 2:
                     return
-                chat.add_user_message(f"Executed: {selected_tools}\nOriginal transcript: {transcript}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:")
+                chat.add_user_message(
+                    f"Executed: {selected_tools}\nOriginal transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:"
+                )
 
                 response = self._model.respond(
                     chat,

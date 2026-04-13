@@ -1,6 +1,14 @@
 import json
+from dataclasses import dataclass
+from typing import Any
 
 from scope_states import ScopeNames, SCOPE_STATES
+
+@dataclass
+class ScopeInfo:
+    name: str
+    tools: list[dict[str, Any]]
+
 
 class StateMachine:
     """
@@ -30,6 +38,9 @@ class StateMachine:
             }
             for tool in self.state
         ]
+
+    def get_scope_info(self):
+        return ScopeInfo(self.state_name.value, self.get_tools())
 
     def get_current_scope(self):
         return self.state_name.value
