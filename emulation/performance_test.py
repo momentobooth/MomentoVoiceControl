@@ -7,29 +7,50 @@ Tests all command examples against the tool list and logs execution time and pre
 import time
 from typing import List, Dict, Any
 
+from core.registry import ResolvedCommand
 # Import required modules from context files
 from state_machine import StateMachine
-from scope_states import ScopeNames
 from command_examples import COMMAND_EXAMPLES, CommandExample, ToolInvocation
 from llm.lmstudio_interface import LMStudioLLM
 
-def calculate_precision(expected_tools: List[str], actual_tools: List[str]) -> float:
-    """Calculate precision as the ratio of correctly predicted tools to total predictions."""
-    if not expected_tools and not actual_tools:
-        return 1.0
-    if not expected_tools or not actual_tools:
-        return 0.0
 
-    # Calculate intersection of tools
-    expected_set = set(expected_tools)
-    actual_set = set(actual_tools)
+def calculate_precision(expected_tools: List[ToolInvocation], actual_tools: List[ToolInvocation]) -> float:
+    """
+    Calculates precision where order matters.
+    A tool is 'correct' if the name matches and its parameters are a superset of the expected parameters.
+    """
+    if not actual_tools:
+        # If we expected tools but got none, precision is 0.
+        # If we expected none and got none, precision is 1.0.
+        return 1.0 if not expected_tools else 0.0
 
-    # Precision is number of correctly predicted tools divided by total predictions
-    if len(actual_set) == 0:
-        return 0.0
+    true_positives = 0
 
-    correct_predictions = len(expected_set.intersection(actual_set))
-    return correct_predictions / len(actual_set)
+    # We iterate through the actual predictions to see how many are "correct"
+    # relative to the expected sequence.
+    for i, actual in enumerate(actual_tools):
+        # If the actual list is longer than the expected list,
+        # any extra tools are automatically 'False Positives'.
+        if i >= len(expected_tools):
+            break
+
+        expected = expected_tools[i]
+
+        # 1. Check if the tool name matches
+        if actual.name != expected.name:
+            continue
+
+        # 2. Check if parameters are a superset (contains all expected keys/values)
+        # All key-value pairs in 'expected' must exist in 'actual'
+        match_params = all(
+            key in actual.parameters and actual.parameters[key] == value
+            for key, value in expected.parameters.items()
+        )
+
+        if match_params:
+            true_positives += 1
+
+    return true_positives / len(actual_tools)
 
 
 def run_command_example_test(
@@ -39,33 +60,19 @@ def run_command_example_test(
 ) -> Dict[str, Any]:
     """Test a single command example against the LM Studio interface."""
 
-    # Get initial available tools from current state
-    initial_scope_info = state_machine.get_scope_info()
-
     # Create generator for available tools that updates as commands are executed
     def scope_info_generator():
-        yield initial_scope_info
         while True:
             next_state_tools = state_machine.get_scope_info()
             yield next_state_tools
 
     # Start timing
     start_time = time.time()
-    resolved_commands = []
+    resolved_commands: List[ResolvedCommand] = []
 
     try:
         # Process all tool invocations through LLM interface
         executed_tools = []
-        actual_tools_found = []
-
-        # for i, tool_invocation in enumerate(command_example.tool_invocations):
-
-            # # Get available tools for this step
-            # current_tools = next(tools_gen)
-            # tool_names = [t['name'] for t in current_tools]
-            #
-            # # Actually use the LLM interface to extract intent
-            # print(f"  Available tools: {tool_names}")
 
         # Use LM Studio interface to parse command
         try:
@@ -76,10 +83,9 @@ def run_command_example_test(
 
             # Process each resolved command in order
             for resolved_cmd in response_generator:
-                if resolved_cmd.intent != "do_nothing_and_finish":
-                    resolved_commands.append(resolved_cmd)
-                    actual_tools_found.append(resolved_cmd.intent)
+                resolved_commands.append(resolved_cmd)
 
+                if resolved_cmd.intent != "do_nothing_and_finish":
                     print(f"  LLM detected: {resolved_cmd.intent}")
 
                     # Execute the tool through state machine to update available tools
@@ -100,18 +106,15 @@ def run_command_example_test(
         print(f"Error processing command example: {e}")
         execution_time = 0.0
         executed_tools = []
-        actual_tools_found = []
 
-    # Calculate precision (we'll use the expected tools from the command example)
-    expected_tool_names = [tool.name for tool in command_example.tool_invocations if
-                           tool.name != "do_nothing_and_finish"]
+    resolved_commands_as_invocations = [ToolInvocation(cmd.intent, cmd.parameters) for cmd in resolved_commands if cmd.intent != "do_nothing_and_finish"]
 
-    precision = calculate_precision(expected_tool_names, actual_tools_found)
+    precision = calculate_precision(command_example.tool_invocations, resolved_commands_as_invocations)
 
     return {
         'command': command_example.transcript,
-        'expected_tools': expected_tool_names,
-        'actual_tools': actual_tools_found,
+        'expected_tools': [t.name for t in command_example.tool_invocations],
+        'actual_tools':  resolved_commands,
         'executed_tools': executed_tools,
         'execution_time': execution_time,
         'precision': precision
@@ -144,7 +147,7 @@ def main():
 
             print(f"\nResults:")
             print(f"  Expected tools: {result['expected_tools']}")
-            print(f"  Actual tools found: {result['actual_tools']}")
+            print(f"  Actual tools found: {[t.intent for t in result['actual_tools']]}")
             print(f"  Execution time: {result['execution_time']:.4f} seconds")
             print(f"  Precision: {result['precision']:.2%}")
 
@@ -154,7 +157,7 @@ def main():
             print(f"Error in test case {i+1}: {e}")
             results.append({
                 'command': example.transcript,
-                'expected_tools': [tool.name for tool in example.tool_invocations if tool.name != "do_nothing_and_finish"],
+                'expected_tools': [t.name for t in example.tool_invocations],
                 'actual_tools': [],
                 'executed_tools': [],
                 'execution_time': 0.0,
@@ -180,7 +183,12 @@ def main():
     print("\nDetailed Results:")
     for i, result in enumerate(results):
         print(f"Test {i+1}: '{result['command']}' -> Precision: {result['precision']:.2%}, Time: {result['execution_time']:.4f}s")
-        print(f"\tExpected tools: {result['expected_tools']}, Actual tools found: {result['actual_tools']}")
+        if result['precision'] < 1.0:
+            print(f"\tExpected tools: {result['expected_tools']}")
+            print(f"\tActual tools found:")
+            actual_tools_list: List[ResolvedCommand] = result['actual_tools']
+            for tool in actual_tools_list:
+                print(f"\t\t{tool.intent}({tool.parameters}): {tool.reasoning} – {tool.confidence:.2%}")
 
 if __name__ == "__main__":
     main()
