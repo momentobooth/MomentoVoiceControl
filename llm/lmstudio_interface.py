@@ -44,7 +44,7 @@ def get_schema(available: list[dict]) -> dict[str, Any]:
 _NO_TOOL = {
     "name": "do_nothing_and_finish",
     "title": "Do Nothing and Finish",
-    "description": "Ends command execution",
+    "description": "Ends command execution. Use this if all words in the transcript have already been executed or if no further commands are explicitly mentioned.",
     "inputSchema": { "type": "object", "additionalProperties": False }
 }
 
@@ -61,6 +61,7 @@ You are a voice command controller for a photo kiosk. Your task is to process a 
 4. **Completion:** If all user requests in the transcript are fulfilled, or if the transcript contains no relevant commands, use 'do_nothing_and_finish'.
 
 ## Rules
+- **Literal Extraction Only:** You are a passive parser. Your only source of truth is the 'Original transcript'. If every word in the transcript has been accounted for by the 'Executed' list, you MUST return 'do_nothing_and_finish'.
 - **One at a time:** Respond with exactly one JSON object per turn.
 - **State Awareness:** You are part of a loop. After you emit a command, the system executes it and calls you again with the updated state and the same transcript. 
 - **Sequential Execution:** If a transcript contains multiple steps (e.g., "Take a photo and then open the gallery"), extract the first logical step first.
@@ -70,7 +71,7 @@ You are a voice command controller for a photo kiosk. Your task is to process a 
 ## Output Format
 You must respond with a JSON object following this structure:
 {
-  "analysis": "Brief explanation of why this command was chosen based on the transcript and history.",
+  "analysis": "Identify which words from the transcript are NOT yet in the 'Executed' list. Then, briefly explain why this command was chosen based on the transcript and history.",
   "intent": "command_name",
   "parameters": { parameters according to the command's inputSchema },
   "confidence": 0.0-1.0
@@ -126,7 +127,7 @@ class LMStudioLLM:
         try:
             chat = lms.Chat(_SYSTEM)
             chat.add_user_message(
-                f"Transcript: \"{transcript}\"\nCurrent scope: {first_scope_info.name}\nAvailable commands:\n{json.dumps(first_available, indent=2)}\n\nOutput JSON:"
+                f"Already processed: {selected_tools}\nTranscript: \"{transcript}\"\nCurrent scope: {first_scope_info.name}\nAvailable commands:\n{json.dumps(first_available, indent=2)}\n\nOutput JSON:"
             )
             config = {
                 "temperature": 0.0,
@@ -155,7 +156,7 @@ class LMStudioLLM:
                 if len(next_available) < 2:
                     return
                 chat.add_user_message(
-                    f"Executed: {selected_tools}\nOriginal transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:"
+                    f"Already processed: {selected_tools}\nOriginal transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:"
                 )
 
                 response = self._model.respond(

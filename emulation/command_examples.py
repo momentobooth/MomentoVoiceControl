@@ -42,5 +42,5 @@ COMMAND_EXAMPLES: list[CommandExample] = [
     CommandExample(ScopeNames.COLLAGE_MAKER_SCREEN, "What's up dog?", []),
     CommandExample(ScopeNames.SHARE_SCREEN, "But you can open the print dialogue.", [ToolInvocation("open_print_dialog", {})]),
     CommandExample(ScopeNames.SHARE_SCREEN, "Okay. Confetti! Get QR", [ToolInvocation("get_qr", {})]),
-    CommandExample(ScopeNames.SHARE_SCREEN, "Print five times.", [ToolInvocation("print", {}), ToolInvocation("set_print_count", {"count": 5}), ToolInvocation("print", {})]),
+    CommandExample(ScopeNames.SHARE_SCREEN, "Print five times.", [ToolInvocation("open_print_dialog", {}), ToolInvocation("set_print_count", {"count": 5}), ToolInvocation("print", {})]),
 ]

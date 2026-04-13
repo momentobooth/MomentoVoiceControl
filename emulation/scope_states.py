@@ -124,7 +124,7 @@ SCOPE_STATES = {
         {
             "name": "get_qr",
             "title": "Get QR Code",
-            "description": "Generate a QR code for sharing the photo.",
+            "description": "Upload the current photo for sharing and show the user a QR code in a pop-up dialog.",
             "examples": ["get qr code", "show qr code", "generate qr code", "share photo"],
             "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.QR_DIALOG
@@ -178,13 +178,13 @@ SCOPE_STATES = {
         {
             "name": "get_qr",
             "title": "Get QR Code",
-            "description": "Generate a QR code for sharing the photo.",
+            "description": "Upload the current photo for sharing and show the user a QR code in a pop-up dialog.",
             "examples": ["get qr code", "show qr code", "generate qr code", "share photo"],
             "inputSchema": _EMPTY_SCHEMA,
             "next_state": ScopeNames.QR_DIALOG
         },
         {
-            "name": "print",
+            "name": "open_print_dialog",
             "title": "Print Photo",
             "description": "Open the print dialog.",
             "examples": ["print", "print it", "print photo", "print picture", "i want a print", "i want to print",
