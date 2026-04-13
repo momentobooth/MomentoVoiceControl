@@ -14,43 +14,35 @@ from command_examples import COMMAND_EXAMPLES, CommandExample, ToolInvocation
 from llm.lmstudio_interface import LMStudioLLM
 
 
-def calculate_precision(expected_tools: List[ToolInvocation], actual_tools: List[ToolInvocation]) -> float:
-    """
-    Calculates precision where order matters.
-    A tool is 'correct' if the name matches and its parameters are a superset of the expected parameters.
-    """
-    if not actual_tools:
-        # If we expected tools but got none, precision is 0.
-        # If we expected none and got none, precision is 1.0.
-        return 1.0 if not expected_tools else 0.0
+def calculate_metrics(expected_tools: List[ToolInvocation], actual_tools: List[ToolInvocation]):
+    if not expected_tools and not actual_tools:
+        return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+
+    if not actual_tools or not expected_tools:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
     true_positives = 0
+    # Compare up to the shortest list length to avoid IndexErrors
+    for i in range(min(len(actual_tools), len(expected_tools))):
+        act = actual_tools[i]
+        exp = expected_tools[i]
 
-    # We iterate through the actual predictions to see how many are "correct"
-    # relative to the expected sequence.
-    for i, actual in enumerate(actual_tools):
-        # If the actual list is longer than the expected list,
-        # any extra tools are automatically 'False Positives'.
-        if i >= len(expected_tools):
-            break
+        # Name match + Superset parameter match
+        if act.name == exp.name:
+            if all(k in act.parameters and act.parameters[k] == v
+                   for k, v in exp.parameters.items()):
+                true_positives += 1
 
-        expected = expected_tools[i]
+    precision = true_positives / len(actual_tools)
+    recall = true_positives / len(expected_tools)
 
-        # 1. Check if the tool name matches
-        if actual.name != expected.name:
-            continue
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0
 
-        # 2. Check if parameters are a superset (contains all expected keys/values)
-        # All key-value pairs in 'expected' must exist in 'actual'
-        match_params = all(
-            key in actual.parameters and actual.parameters[key] == value
-            for key, value in expected.parameters.items()
-        )
-
-        if match_params:
-            true_positives += 1
-
-    return true_positives / len(actual_tools)
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1
+    }
 
 
 def run_command_example_test(
@@ -109,7 +101,7 @@ def run_command_example_test(
 
     resolved_commands_as_invocations = [ToolInvocation(cmd.intent, cmd.parameters) for cmd in resolved_commands if cmd.intent != "do_nothing_and_finish"]
 
-    precision = calculate_precision(command_example.tool_invocations, resolved_commands_as_invocations)
+    metrics = calculate_metrics(command_example.tool_invocations, resolved_commands_as_invocations)
 
     return {
         'command': command_example.transcript,
@@ -117,7 +109,7 @@ def run_command_example_test(
         'actual_tools':  resolved_commands,
         'executed_tools': executed_tools,
         'execution_time': execution_time,
-        'precision': precision
+        'precision': metrics['f1']
     }
 
 def main():

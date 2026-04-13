@@ -7,7 +7,7 @@ with enforced structured output and proper response handling.
 
 from __future__ import annotations
 import json
-from typing import Any, Generator
+from typing import Any, Generator, Set
 
 import lmstudio as lms
 
@@ -17,6 +17,9 @@ from emulation.state_machine import ScopeInfo
 
 def get_schema(available: list[dict]) -> dict[str, Any]:
     intent_options: list[str] = [tool['name'] for tool in available]
+    schemas: list[str] = [json.dumps(tool['inputSchema']) for tool in available]
+    unique_schemas = [json.loads(s) for s in set(schemas)]
+
     return {
         "type": "object",
         "properties": {
@@ -29,7 +32,7 @@ def get_schema(available: list[dict]) -> dict[str, Any]:
                 "enum": intent_options,
             },
             "parameters": {
-                "type": "object",
+                "anyOf": unique_schemas,
             },
             "confidence": {
                 "type": "number",
@@ -73,7 +76,7 @@ You must respond with a JSON object following this structure:
 {
   "analysis": "Identify which words from the transcript are NOT yet in the 'Executed' list. Then, briefly explain why this command was chosen based on the transcript and history.",
   "intent": "command_name",
-  "parameters": { parameters according to the command's inputSchema },
+  "parameters": { parameters according to the command's inputSchema; use numerical values },
   "confidence": 0.0-1.0
 }
 """

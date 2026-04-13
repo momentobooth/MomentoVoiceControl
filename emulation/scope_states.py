@@ -68,7 +68,7 @@ SCOPE_STATES = {
         {
             "name": "select_pictures",
             "title": "Select Pictures",
-            "description": "Choose pictures to include in the collage.",
+            "description": "Choose pictures to include in the collage. The supplied selection indexes will override any previous selections. {\"selected\": []} therefore means no selection. 1-indexed.",
             "examples": ["select picture {selected}, {selected} and {selected}",
                          "select picture {selected} and {second}", "select picture {selected}",
                          "select the {selected} picture", "select the {selected} and {selected} picture",
@@ -153,7 +153,7 @@ SCOPE_STATES = {
             "title": "Set Print Count",
             "description": "Sets the number of copies to print.",
             "examples": ["print five pictures", "set three copies", "two times"],
-            "inputSchema": _EMPTY_SCHEMA,
+            "inputSchema": '{ "type": "object", "properties": {"count": { "type": "integer", "minimum": 1, "maximum": 5 }}, "required": ["count"], "additionalProperties": false}',
             "next_state": ScopeNames.PRINT_DIALOG
         },
         {
@@ -206,7 +206,7 @@ SCOPE_STATES = {
             "title": 'Set Language',
             "description": 'Change the application language to the chosen one for this session.',
             "examples": ['set language to {language_code}', 'set language to {language_code}', 'set language to {language_code}'],
-            "inputSchema": '{ "type": "object", "properties": { "language_code": { "type": "string", "description": "The ISO 639-1 code for the language to set" } }, "required": ["language_code"], "additionalProperties": false }',
+            "inputSchema": '{ "type": "object", "properties": { "language_code": { "enum": ["en", "nl", "de", "fr"], "description": "The ISO 639-1 code for the language to set" } }, "required": ["language_code"], "additionalProperties": false }',
             "next_state": ScopeNames.NAVIGATION_SCREEN
         },
         {
