@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import List
 
+
 class ScopeNames(StrEnum):
     START_SCREEN = "Start Screen"
     NAVIGATION_SCREEN = "Navigation Screen"
@@ -15,21 +16,31 @@ class ScopeNames(StrEnum):
     QR_DIALOG = "QR Dialog"
     LANGUAGE_DIALOG = "Language Dialog"
 
-_EMPTY_SCHEMA = { "type": "object", "additionalProperties": False }
+
+_EMPTY_SCHEMA = {"type": "object", "additionalProperties": False}
+
+
+@dataclass
+class Example:
+    phrase: str
+    arguments: dict = field(default_factory=dict)
+
 
 @dataclass
 class Action:
     name: str
     title: str
     description: str
-    examples: List[str]
+    examples: List[Example]
     next_state: ScopeNames
     input_schema: dict = field(default_factory=_EMPTY_SCHEMA)
+
 
 @dataclass
 class Scope:
     description: str
     actions: List[Action] = field(default_factory=list)
+
 
 SCOPE_STATES = {
     ScopeNames.START_SCREEN: Scope(
@@ -39,7 +50,13 @@ SCOPE_STATES = {
                 name="start",
                 title="Start",
                 description="Begin the photo booth experience.",
-                examples=["start", "begin", "let's go", "proceed", "continue"],
+                examples=[
+                    Example(phrase="start"),
+                    Example(phrase="begin"),
+                    Example(phrase="let's go"),
+                    Example(phrase="proceed"),
+                    Example(phrase="continue")
+                ],
                 next_state=ScopeNames.NAVIGATION_SCREEN
             )
         ]
@@ -51,28 +68,51 @@ SCOPE_STATES = {
                 name="single_photo",
                 title="Single Photo",
                 description="Take a single photo.",
-                examples=["single", "single capture", "single photo", "single picture", "take a photo"],
+                examples=[
+                    Example(phrase="single"),
+                    Example(phrase="single capture"),
+                    Example(phrase="single photo"),
+                    Example(phrase="single picture"),
+                    Example(phrase="take a photo")
+                ],
                 next_state=ScopeNames.SINGLE_CAPTURE_SCREEN
             ),
             Action(
                 name="collage",
                 title="Collage",
                 description="Shoot multiple photos and create a collage from them.",
-                examples=["collage", "collage capture", "collage photo", "collage picture", "take a collage"],
+                examples=[
+                    Example(phrase="collage"),
+                    Example(phrase="collage capture"),
+                    Example(phrase="collage photo"),
+                    Example(phrase="collage picture"),
+                    Example(phrase="take a collage")
+                ],
                 next_state=ScopeNames.MULTI_CAPTURE_SCREEN
             ),
             Action(
                 name="gallery",
                 title="Gallery",
                 description="View the previously captured photos.",
-                examples=["gallery", "view gallery", "see photos", "browse images"],
+                examples=[
+                    Example(phrase="gallery"),
+                    Example(phrase="view gallery"),
+                    Example(phrase="see photos"),
+                    Example(phrase="browse images")
+                ],
                 next_state=ScopeNames.GALLERY
             ),
             Action(
                 name="open_language_dialog",
                 title="Language",
                 description="Open the language selection dialog.",
-                examples=["language", "change language", "select language", "set language", "open language settings"],
+                examples=[
+                    Example(phrase="language"),
+                    Example(phrase="change language"),
+                    Example(phrase="select language"),
+                    Example(phrase="set language"),
+                    Example(phrase="open language settings")
+                ],
                 next_state=ScopeNames.LANGUAGE_DIALOG
             )
         ]
@@ -90,22 +130,52 @@ SCOPE_STATES = {
                 name="select_pictures",
                 title="Select Pictures",
                 description="Choose pictures to include in the collage. 1-indexed.",
-                examples=["select picture {selected}", "select the {selected} and {selected} picture"],
+                examples=[
+                    Example(phrase="select picture {selected:1}, {selected:2} and {selected:4}",
+                            arguments={"selected": [1, 2, 4]}),
+                    Example(phrase="select picture {selected:one} and {selected:two}", arguments={"selected": [1, 2]}),
+                    Example(phrase="select picture {selected:one}", arguments={"selected": [1]}),
+                    Example(phrase="select the {selected:first} picture", arguments={"selected": [1]}),
+                    Example(phrase="select the {selected:second} and {selected:third} picture",
+                            arguments={"selected": [2, 3]}),
+                    Example(phrase="select the {selected:third}, {selected:second}, and {selected:first} picture",
+                            arguments={"selected": [3, 2, 1]})
+                ],
                 next_state=ScopeNames.COLLAGE_MAKER_SCREEN,
-                input_schema={ "type": "object", "properties": { "selected": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 4 }, "minItems": 0, "maxItems": 4 }}, "description": "The indices of the selected pictures, 1-indexed", "required": ["selected"], "additionalProperties": False }
+                input_schema={"type": "object", "properties": {
+                    "selected": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 4},
+                                 "minItems": 0, "maxItems": 4}},
+                              "description": "The indices of the selected pictures, 1-indexed",
+                              "required": ["selected"], "additionalProperties": False}
             ),
             Action(
                 name="continue",
                 title="Continue",
                 description="Proceed to the share screen.",
-                examples=["continue", "next", "done", "finished"],
+                examples=[
+                    Example(phrase="continue"),
+                    Example(phrase="next"),
+                    Example(phrase="go on"),
+                    Example(phrase="proceed"),
+                    Example(phrase="keep going"),
+                    Example(phrase="done"),
+                    Example(phrase="finished")
+                ],
                 next_state=ScopeNames.SHARE_SCREEN
             ),
             Action(
                 name="select_all_pictures",
                 title="Select All Pictures",
                 description="Select all captured pictures",
-                examples=["select all pictures", "all of them", "use all pictures"],
+                examples=[
+                    Example(phrase="select all pictures"),
+                    Example(phrase="select all photos"),
+                    Example(phrase="select all images"),
+                    Example(phrase="select all"),
+                    Example(phrase="all of them"),
+                    Example(phrase="all pictures"),
+                    Example(phrase="use all pictures")
+                ],
                 next_state=ScopeNames.COLLAGE_MAKER_SCREEN
             )
         ]
@@ -117,14 +187,26 @@ SCOPE_STATES = {
                 name="open_latest_picture",
                 title="Open Latest Picture",
                 description="View the most recently captured picture.",
-                examples=["latest", "most recent", "last photo"],
+                examples=[
+                    Example(phrase="latest"),
+                    Example(phrase="most recent"),
+                    Example(phrase="last photo"),
+                    Example(phrase="last picture"),
+                    Example(phrase="open latest")
+                ],
                 next_state=ScopeNames.PHOTO_DETAILS_SCREEN
             ),
             Action(
                 name="back",
                 title="Back",
-                description="Return to the navigation screen.",
-                examples=["back", "previous", "go back"],
+                description="Return to the previous screen.",
+                examples=[
+                    Example(phrase="back"),
+                    Example(phrase="previous"),
+                    Example(phrase="go back"),
+                    Example(phrase="return"),
+                    Example(phrase="previous screen")
+                ],
                 next_state=ScopeNames.NAVIGATION_SCREEN
             )
         ]
@@ -136,21 +218,33 @@ SCOPE_STATES = {
                 name="back",
                 title="Back",
                 description="Return to the gallery screen.",
-                examples=["back", "previous", "go back"],
+                examples=[
+                    Example(phrase="back"),
+                    Example(phrase="previous"),
+                    Example(phrase="go back")
+                ],
                 next_state=ScopeNames.GALLERY
             ),
             Action(
                 name="get_qr",
                 title="Get QR Code",
                 description="Show the user a QR code in a pop-up dialog.",
-                examples=["get qr code", "show qr code", "share photo"],
+                examples=[
+                    Example(phrase="get qr code"),
+                    Example(phrase="show qr code"),
+                    Example(phrase="share photo")
+                ],
                 next_state=ScopeNames.QR_DIALOG
             ),
             Action(
                 name="open_print_dialog",
                 title="Print",
                 description="Open the print dialog.",
-                examples=["print", "print photo", "i want to print"],
+                examples=[
+                    Example(phrase="print"),
+                    Example(phrase="print photo"),
+                    Example(phrase="i want to print")
+                ],
                 next_state=ScopeNames.PRINT_DIALOG
             )
         ]
@@ -162,22 +256,64 @@ SCOPE_STATES = {
                 name="cancel",
                 title="Cancel",
                 description="Presses the cancel button in the print dialog.",
-                examples=["cancel", "stop", "abort"],
+                examples=[
+                    Example(phrase="cancel"),
+                    Example(phrase="stop"),
+                    Example(phrase="abort"),
+                    Example(phrase="never mind"),
+                    Example(phrase="forget it"),
+                    Example(phrase="close"),
+                    Example(phrase="dismiss"),
+                    Example(phrase="exit")
+                ],
                 next_state=ScopeNames.SHARE_SCREEN
             ),
             Action(
-                name="set_print_count",
-                title="Set Print Count",
+                name="set_copies",
+                title="Set Copies",
                 description="Sets the number of copies to print.",
-                examples=["print five pictures", "set three copies"],
+                examples=[
+                    Example(phrase="set copies to {copies:1}", arguments={"copies": 1}),
+                    Example(phrase="make {copies:three} copies", arguments={"copies": 3}),
+                    Example(phrase="change copies to {copies:four}", arguments={"copies": 4}),
+                    Example(phrase="set number of copies to {copies:2}", arguments={"copies": 2})
+                ],
                 next_state=ScopeNames.PRINT_DIALOG,
-                input_schema={ "type": "object", "properties": {"count": { "type": "integer", "minimum": 1, "maximum": 5 }}, "required": ["count"], "additionalProperties": False}
+                input_schema={"type": "object", "properties": {
+                    "copies": {"type": "integer", "description": "The number of copies to print", "minimum": 1,
+                               "maximum": 5}}, "required": ["copies"], "additionalProperties": False}
+            ),
+            Action(
+                name="set_size",
+                title="Set Size",
+                description="Sets the print size.",
+                examples=[
+                    Example(phrase="set print size to {size:Normal print size}",
+                            arguments={"size": "Normal print size"}),
+                    Example(phrase="change print size to {size:Small print size}",
+                            arguments={"size": "Small print size"}),
+                    Example(phrase="set size to {size:Normal print size}", arguments={"size": "Normal print size"}),
+                    Example(phrase="change size to {size:Tiny print size}", arguments={"size": "Tiny print size"})
+                ],
+                next_state=ScopeNames.PRINT_DIALOG,
+                input_schema={"type": "object", "properties": {
+                    "size": {"enum": ["Normal print size", "Small print size", "Tiny print size"],
+                             "description": "The print size to set"}}, "required": ["size"],
+                              "additionalProperties": False}
             ),
             Action(
                 name="print",
                 title="Print",
                 description="Presses the print button in the print dialog.",
-                examples=["print", "print it", "let's print"],
+                examples=[
+                    Example(phrase="print"),
+                    Example(phrase="print it"),
+                    Example(phrase="print photo"),
+                    Example(phrase="print picture"),
+                    Example(phrase="i want a print"),
+                    Example(phrase="i want to print"),
+                    Example(phrase="let's print")
+                ],
                 next_state=ScopeNames.PRINT_DIALOG
             )
         ]
@@ -189,28 +325,54 @@ SCOPE_STATES = {
                 name="retake",
                 title="Retake Photo",
                 description="Retake the current photo.",
-                examples=["retake", "take again", "try again"],
+                examples=[
+                    Example(phrase="retake"),
+                    Example(phrase="take again"),
+                    Example(phrase="try again"),
+                    Example(phrase="do it again")
+                ],
                 next_state=ScopeNames.COLLAGE_MAKER_SCREEN
             ),
             Action(
                 name="get_qr",
                 title="Get QR Code",
-                description="Show the user a QR code in a pop-up dialog.",
-                examples=["get qr code", "share photo"],
+                description="Generate a QR code for sharing the photo.",
+                examples=[
+                    Example(phrase="get qr code"),
+                    Example(phrase="show qr code"),
+                    Example(phrase="generate qr code"),
+                    Example(phrase="share photo")
+                ],
                 next_state=ScopeNames.QR_DIALOG
             ),
             Action(
-                name="open_print_dialog",
+                name="print",
                 title="Print Photo",
                 description="Open the print dialog.",
-                examples=["print", "print photo"],
+                examples=[
+                    Example(phrase="print"),
+                    Example(phrase="print it"),
+                    Example(phrase="print photo"),
+                    Example(phrase="print picture"),
+                    Example(phrase="i want a print"),
+                    Example(phrase="i want to print"),
+                    Example(phrase="let's print")
+                ],
                 next_state=ScopeNames.PRINT_DIALOG
             ),
             Action(
                 name="continue",
                 title="Continue",
                 description="Proceed to the start screen.",
-                examples=["continue", "done", "finished"],
+                examples=[
+                    Example(phrase="continue"),
+                    Example(phrase="next"),
+                    Example(phrase="go on"),
+                    Example(phrase="proceed"),
+                    Example(phrase="keep going"),
+                    Example(phrase="done"),
+                    Example(phrase="finished")
+                ],
                 next_state=ScopeNames.START_SCREEN
             )
         ]
@@ -221,16 +383,52 @@ SCOPE_STATES = {
             Action(
                 name="set_language",
                 title='Set Language',
-                description='Change the application language.',
-                examples=['set language to {language_code}'],
+                description='Change the application language to the chosen one for this session.',
+                examples=[
+                    Example(phrase="select English", arguments={"language_code": "en"}),
+                    Example(phrase="use English", arguments={"language_code": "en"}),
+                    Example(phrase="set language to English", arguments={"language_code": "en"}),
+                    Example(phrase="change language to English", arguments={"language_code": "en"}),
+                    Example(phrase="switch language to English", arguments={"language_code": "en"}),
+                    Example(phrase="i want to use English", arguments={"language_code": "en"}),
+                    Example(phrase="select Nederlands", arguments={"language_code": "nl"}),
+                    Example(phrase="use Nederlands", arguments={"language_code": "nl"}),
+                    Example(phrase="set language to Nederlands", arguments={"language_code": "nl"}),
+                    Example(phrase="change language to Nederlands", arguments={"language_code": "nl"}),
+                    Example(phrase="switch language to Nederlands", arguments={"language_code": "nl"}),
+                    Example(phrase="i want to use Nederlands", arguments={"language_code": "nl"}),
+                    Example(phrase="select Deutsch", arguments={"language_code": "de"}),
+                    Example(phrase="use Deutsch", arguments={"language_code": "de"}),
+                    Example(phrase="set language to Deutsch", arguments={"language_code": "de"}),
+                    Example(phrase="change language to Deutsch", arguments={"language_code": "de"}),
+                    Example(phrase="switch language to Deutsch", arguments={"language_code": "de"}),
+                    Example(phrase="i want to use Deutsch", arguments={"language_code": "de"}),
+                    Example(phrase="select Français", arguments={"language_code": "fr"}),
+                    Example(phrase="use Français", arguments={"language_code": "fr"}),
+                    Example(phrase="set language to Français", arguments={"language_code": "fr"}),
+                    Example(phrase="change language to Français", arguments={"language_code": "fr"}),
+                    Example(phrase="switch language to Français", arguments={"language_code": "fr"}),
+                    Example(phrase="i want to use Français", arguments={"language_code": "fr"})
+                ],
                 next_state=ScopeNames.NAVIGATION_SCREEN,
-                input_schema={ "type": "object", "properties": { "language_code": { "enum": ["en", "nl", "de", "fr"], "description": "The ISO 639-1 code" } }, "required": ["language_code"], "additionalProperties": False }
+                input_schema={"type": "object", "properties": {"language_code": {"enum": ["en", "nl", "de", "fr"],
+                                                                                 "description": "The ISO 639-1 code for the language to set"}},
+                              "required": ["language_code"], "additionalProperties": False}
             ),
             Action(
-                name="close",
-                title='Close Dialog',
-                description='Close the language dialog.',
-                examples=['close', 'cancel', 'dismiss'],
+                name="dismiss",
+                title='Dismiss',
+                description='Close the language selection dialog without changing the language.',
+                examples=[
+                    Example(phrase="cancel"),
+                    Example(phrase="stop"),
+                    Example(phrase="abort"),
+                    Example(phrase="never mind"),
+                    Example(phrase="forget it"),
+                    Example(phrase="close"),
+                    Example(phrase="dismiss"),
+                    Example(phrase="exit")
+                ],
                 next_state=ScopeNames.NAVIGATION_SCREEN
             )
         ]
@@ -241,15 +439,29 @@ SCOPE_STATES = {
             Action(
                 name="redo_upload",
                 title='Redo Upload',
-                description="Start the upload process again to get a new QR code.",
-                examples=['redo upload', 'upload again'],
+                description="Start the upload process again to get a new QR code",
+                examples=[
+                    Example(phrase="redo upload"),
+                    Example(phrase="upload again"),
+                    Example(phrase="upload another one"),
+                    Example(phrase="get me a new QR code")
+                ],
                 next_state=ScopeNames.QR_DIALOG
             ),
             Action(
                 name="close",
-                title='Close Dialog',
+                title='Close',
                 description='Close the QR sharing dialog.',
-                examples=['done', 'close', 'dismiss'],
+                examples=[
+                    Example(phrase="cancel"),
+                    Example(phrase="stop"),
+                    Example(phrase="abort"),
+                    Example(phrase="never mind"),
+                    Example(phrase="forget it"),
+                    Example(phrase="close"),
+                    Example(phrase="dismiss"),
+                    Example(phrase="exit")
+                ],
                 next_state=ScopeNames.SHARE_SCREEN
             )
         ]
