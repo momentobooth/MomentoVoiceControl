@@ -25,6 +25,9 @@ class Example:
     phrase: str
     arguments: dict = field(default_factory=dict)
 
+    def to_dict(self):
+        return {"phrase": self.phrase, "arguments": self.arguments}
+
 
 @dataclass
 class Action:
@@ -33,17 +36,20 @@ class Action:
     description: str
     examples: List[Example]
     next_state: ScopeNames
-    input_schema: dict = field(default_factory=_EMPTY_SCHEMA)
+    input_schema: dict = field(default_factory=lambda: _EMPTY_SCHEMA)
+    input_schema_description: str = "{}"
 
 
 @dataclass
-class Scope:
+class ScopeInfo:
+    name: str
     description: str
     actions: List[Action] = field(default_factory=list)
 
 
-SCOPE_STATES = {
-    ScopeNames.START_SCREEN: Scope(
+SCOPE_STATES: dict[ScopeNames, ScopeInfo] = {
+    ScopeNames.START_SCREEN: ScopeInfo(
+        name=ScopeNames.START_SCREEN.value,
         description="The initial 'attract' mode of the application. Displays a 'Touch to Start' prompt.",
         actions=[
             Action(
@@ -61,7 +67,8 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.NAVIGATION_SCREEN: Scope(
+    ScopeNames.NAVIGATION_SCREEN: ScopeInfo(
+        name=ScopeNames.NAVIGATION_SCREEN.value,
         description="The central hub for all user activities. Provides access to capture modes, the gallery, and settings.",
         actions=[
             Action(
@@ -117,13 +124,16 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.SINGLE_CAPTURE_SCREEN: Scope(
+    ScopeNames.SINGLE_CAPTURE_SCREEN: ScopeInfo(
+        name=ScopeNames.SINGLE_CAPTURE_SCREEN.value,
         description="An autonomous capture flow for a single photo. Includes a countdown and live preview."
     ),
-    ScopeNames.MULTI_CAPTURE_SCREEN: Scope(
+    ScopeNames.MULTI_CAPTURE_SCREEN: ScopeInfo(
+        name=ScopeNames.MULTI_CAPTURE_SCREEN.value,
         description="An autonomous multi-capture flow for collages. Includes countdowns for each capture."
     ),
-    ScopeNames.COLLAGE_MAKER_SCREEN: Scope(
+    ScopeNames.COLLAGE_MAKER_SCREEN: ScopeInfo(
+        name=ScopeNames.COLLAGE_MAKER_SCREEN.value,
         description="The workspace for assembling a custom collage from captured images.",
         actions=[
             Action(
@@ -146,7 +156,8 @@ SCOPE_STATES = {
                     "selected": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 4},
                                  "minItems": 0, "maxItems": 4}},
                               "description": "The indices of the selected pictures, 1-indexed",
-                              "required": ["selected"], "additionalProperties": False}
+                              "required": ["selected"], "additionalProperties": False},
+                input_schema_description='{ "selected": array of 1-indexed integers between 1 and 4, e.g., [1, 2, 4] }'
             ),
             Action(
                 name="continue",
@@ -180,7 +191,8 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.GALLERY: Scope(
+    ScopeNames.GALLERY: ScopeInfo(
+        name=ScopeNames.GALLERY.value,
         description="An archive overview of all saved collage outputs.",
         actions=[
             Action(
@@ -211,7 +223,8 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.PHOTO_DETAILS_SCREEN: Scope(
+    ScopeNames.PHOTO_DETAILS_SCREEN: ScopeInfo(
+        name=ScopeNames.PHOTO_DETAILS_SCREEN.value,
         description="A detailed view of a selected gallery image with options to print or share.",
         actions=[
             Action(
@@ -226,9 +239,9 @@ SCOPE_STATES = {
                 next_state=ScopeNames.GALLERY
             ),
             Action(
-                name="get_qr",
-                title="Get QR Code",
-                description="Show the user a QR code in a pop-up dialog.",
+                name="share_with_qr_code_dialog",
+                title="Share with QR Code",
+                description="Upload the photo, generate a QR code and display it in a dialog to share the photo.",
                 examples=[
                     Example(phrase="get qr code"),
                     Example(phrase="show qr code"),
@@ -238,18 +251,23 @@ SCOPE_STATES = {
             ),
             Action(
                 name="open_print_dialog",
-                title="Print",
-                description="Open the print dialog.",
+                title="Open Print Dialog",
+                description="Open the print dialog where options can be selected and a print job can be submitted.",
                 examples=[
                     Example(phrase="print"),
+                    Example(phrase="print it"),
                     Example(phrase="print photo"),
-                    Example(phrase="i want to print")
+                    Example(phrase="print picture"),
+                    Example(phrase="i want a print"),
+                    Example(phrase="i want to print"),
+                    Example(phrase="let's print")
                 ],
                 next_state=ScopeNames.PRINT_DIALOG
             )
         ]
     ),
-    ScopeNames.PRINT_DIALOG: Scope(
+    ScopeNames.PRINT_DIALOG: ScopeInfo(
+        name=ScopeNames.PRINT_DIALOG.value,
         description="A dialog for configuring the print job, such as number of copies.",
         actions=[
             Action(
@@ -281,7 +299,8 @@ SCOPE_STATES = {
                 next_state=ScopeNames.PRINT_DIALOG,
                 input_schema={"type": "object", "properties": {
                     "copies": {"type": "integer", "description": "The number of copies to print", "minimum": 1,
-                               "maximum": 5}}, "required": ["copies"], "additionalProperties": False}
+                               "maximum": 5}}, "required": ["copies"], "additionalProperties": False},
+                input_schema_description='{ "copies": integer between 1 and 5 }'
             ),
             Action(
                 name="set_size",
@@ -299,7 +318,8 @@ SCOPE_STATES = {
                 input_schema={"type": "object", "properties": {
                     "size": {"enum": ["Normal print size", "Small print size", "Tiny print size"],
                              "description": "The print size to set"}}, "required": ["size"],
-                              "additionalProperties": False}
+                              "additionalProperties": False},
+                input_schema_description='{ "size": one of "Normal print size", "Small print size", "Tiny print size"}'
             ),
             Action(
                 name="print",
@@ -318,7 +338,8 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.SHARE_SCREEN: Scope(
+    ScopeNames.SHARE_SCREEN: ScopeInfo(
+        name=ScopeNames.SHARE_SCREEN.value,
         description="The final screen for a new capture, offering printing and sharing options.",
         actions=[
             Action(
@@ -334,9 +355,9 @@ SCOPE_STATES = {
                 next_state=ScopeNames.COLLAGE_MAKER_SCREEN
             ),
             Action(
-                name="get_qr",
-                title="Get QR Code",
-                description="Generate a QR code for sharing the photo.",
+                name="share_with_qr_code_dialog",
+                title="Share with QR Code",
+                description="Upload the photo, generate a QR code and display it in a dialog to share the photo.",
                 examples=[
                     Example(phrase="get qr code"),
                     Example(phrase="show qr code"),
@@ -346,9 +367,9 @@ SCOPE_STATES = {
                 next_state=ScopeNames.QR_DIALOG
             ),
             Action(
-                name="print",
-                title="Print Photo",
-                description="Open the print dialog.",
+                name="open_print_dialog",
+                title="Open Print Dialog",
+                description="Open the print dialog where options can be selected and a print job can be submitted.",
                 examples=[
                     Example(phrase="print"),
                     Example(phrase="print it"),
@@ -377,7 +398,8 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.LANGUAGE_DIALOG: Scope(
+    ScopeNames.LANGUAGE_DIALOG: ScopeInfo(
+        name=ScopeNames.LANGUAGE_DIALOG.value,
         description="A pop-up dialog where the user can change the application's language locale.",
         actions=[
             Action(
@@ -413,7 +435,8 @@ SCOPE_STATES = {
                 next_state=ScopeNames.NAVIGATION_SCREEN,
                 input_schema={"type": "object", "properties": {"language_code": {"enum": ["en", "nl", "de", "fr"],
                                                                                  "description": "The ISO 639-1 code for the language to set"}},
-                              "required": ["language_code"], "additionalProperties": False}
+                              "required": ["language_code"], "additionalProperties": False},
+                input_schema_description='{ "language_code": one of "en", "nl", "de", "fr" } }'
             ),
             Action(
                 name="dismiss",
@@ -433,7 +456,8 @@ SCOPE_STATES = {
             )
         ]
     ),
-    ScopeNames.QR_DIALOG: Scope(
+    ScopeNames.QR_DIALOG: ScopeInfo(
+        name=ScopeNames.QR_DIALOG.value,
         description="A dialog displaying a QR code for the user to download their image.",
         actions=[
             Action(

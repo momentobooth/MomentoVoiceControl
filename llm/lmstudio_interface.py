@@ -12,12 +12,12 @@ from typing import Any, Generator, Set
 import lmstudio as lms
 
 from core.registry import ResolvedCommand
-from emulation.state_machine import ScopeInfo
+from emulation.scope_states import Action, ScopeInfo, ScopeNames
 
 
-def get_schema(available: list[dict]) -> dict[str, Any]:
-    intent_options: list[str] = [tool['name'] for tool in available]
-    schemas: list[str] = [json.dumps(tool['inputSchema']) for tool in available]
+def get_schema(available: list[Action]) -> dict[str, Any]:
+    intent_options: list[str] = [tool.name for tool in available]
+    schemas: list[str] = [json.dumps(tool.input_schema) for tool in available]
     unique_schemas = [json.loads(s) for s in set(schemas)]
 
     return {
@@ -44,12 +44,14 @@ def get_schema(available: list[dict]) -> dict[str, Any]:
         "additionalProperties": False,
     }
 
-_NO_TOOL = {
-    "name": "do_nothing_and_finish",
-    "title": "Do Nothing and Finish",
-    "description": "Ends command execution. Use this if all words in the transcript have already been executed or if no further commands are explicitly mentioned.",
-    "inputSchema": { "type": "object", "additionalProperties": False }
-}
+_NO_TOOL = Action(
+    name="do_nothing_and_finish",
+    title="Do Nothing and Finish",
+    description="Ends command execution. Use this if all words in the transcript have already been executed or if no further commands are explicitly mentioned.",
+    input_schema={"type": "object", "additionalProperties": False},
+    examples=[],
+    next_state=ScopeNames.START_SCREEN,  # Not actually used
+)
 
 # ── Prompt template ───────────────────────────────────────────────────────────
 
@@ -76,13 +78,32 @@ You must respond with a JSON object following this structure:
 {
   "analysis": "Identify which words from the transcript are NOT yet in the 'Executed' list. Then, briefly explain why this command was chosen based on the transcript and history.",
   "intent": "command_name",
-  "parameters": { parameters according to the command's inputSchema; use numerical values },
+  "parameters": { parameters according to the command's parameters_format },
   "confidence": 0.0-1.0
 }
 """
 
-def add_no_tool(initial_list: list[dict]) -> list[dict]:
+def add_no_tool(initial_list: list[Action]) -> list[Action]:
     return list(initial_list) + [_NO_TOOL]
+
+
+def format_actions(actions: list[Action]) -> str:
+    mapped_actions = []
+    for a in actions:
+        has_params = a.input_schema_description != "{}"
+        examples_mapped = [
+            ex.phrase if not has_params else ex.to_dict()
+            for ex in a.examples
+        ]
+        mapped = {
+            "name": a.name,
+            "title": a.title,
+            "description": f"{a.description}",
+            "parameters_format": a.input_schema_description if has_params else "This tool takes no parameters.",
+            "examples": examples_mapped,
+        }
+        mapped_actions.append(mapped)
+    return json.dumps(mapped_actions, indent=2)
 
 
 # ── LM Studio implementation using lmstudio package ──────────────────────────
@@ -124,13 +145,13 @@ class LMStudioLLM:
         :return:
         """
         first_scope_info = next(available)
-        first_available = add_no_tool(first_scope_info.tools)
+        first_available = add_no_tool(first_scope_info.actions)
         selected_tools = []
 
         try:
             chat = lms.Chat(_SYSTEM)
             chat.add_user_message(
-                f"Already processed: {selected_tools}\nTranscript: \"{transcript}\"\nCurrent scope: {first_scope_info.name}\nAvailable commands:\n{json.dumps(first_available, indent=2)}\n\nOutput JSON:"
+                f"Already processed: {selected_tools}\nTranscript: \"{transcript}\"\nCurrent scope: {first_scope_info.name}\nAvailable commands:\n{format_actions(first_available)}\n\nOutput JSON:"
             )
             config = {
                 "temperature": 0.0,
@@ -145,7 +166,7 @@ class LMStudioLLM:
             chat.add_assistant_response(response)
 
             tool_call = response.parsed
-            while tool_call['intent'] != _NO_TOOL['name']:
+            while tool_call['intent'] != _NO_TOOL.name:
                 selected_tools.append(tool_call['intent'])
                 if tool_call['confidence'] < self.min_confidence:
                     print(f"[Layer3] LLM reported an insufficient confidence of {tool_call['confidence']} for {tool_call['intent']}")
@@ -154,12 +175,12 @@ class LMStudioLLM:
                     print(f"[Layer3] Maximum number of tools reached. Stopping execution.")
                     return
                 next_scope_info = next(available)
-                next_available = add_no_tool(next_scope_info.tools)
+                next_available = add_no_tool(next_scope_info.actions)
                 # When no actions are available, no use in running the model further
                 if len(next_available) < 2:
                     return
                 chat.add_user_message(
-                    f"Already processed: {selected_tools}\nOriginal transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}\nAvailable commands:\n{json.dumps(next_available, indent = 2)}\n\nOutput JSON:"
+                    f"Already processed: {selected_tools}\nOriginal transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}\nAvailable commands:\n{format_actions(next_available)}\n\nOutput JSON:"
                 )
 
                 response = self._model.respond(
