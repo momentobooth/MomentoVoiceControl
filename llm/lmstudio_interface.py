@@ -56,17 +56,12 @@ class LMStudioLLM:
         :param available: generator supplying currently available commands
         :return:
         """
-        first_scope_info = next(available)
-        first_available = add_no_tool(first_scope_info.actions)
         selected_tools = []
         system_prompt = SYSTEM_PROMPTS["has_analysis"] if self.use_analysis else SYSTEM_PROMPTS["no_analysis"]
         tool_call = {'intent': "initial"}
 
         try:
             chat = lms.Chat(system_prompt)
-            chat.add_user_message(
-                f"Already processed: {selected_tools}\nTranscript: \"{transcript}\"\nCurrent scope: {first_scope_info.name}\nAvailable commands:\n{format_actions(first_available)}\n\nOutput JSON:"
-            )
             config = {
                 "temperature": 0.0,
                 "max_tokens": 256,
@@ -78,9 +73,11 @@ class LMStudioLLM:
                 # When no actions are available, no use in running the model further
                 if len(next_available) < 2:
                     return
-                chat.add_user_message(
-                    f"Already processed: {selected_tools}\nTranscript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}\nAvailable commands:\n{format_actions(next_available)}\n\nOutput JSON:"
-                )
+                message =\
+                    f"Transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}, {next_scope_info.description}\nAvailable commands:\n{format_actions(next_available)}\n\nOutput JSON:" \
+                    if len(selected_tools) == 0 else \
+                    f"Already processed: {selected_tools}\nOriginal transcript: \"{transcript}\"\nCurrent scope: {next_scope_info.name}, {next_scope_info.description}\nAvailable commands:\n{format_actions(next_available)}\n\nOutput JSON:"
+                chat.add_user_message(message)
 
                 schema = get_schema_analysis(next_available) if self.use_analysis else get_schema_no_analysis(next_available)
                 response = self._model.respond(
@@ -94,7 +91,8 @@ class LMStudioLLM:
                 selected_tools.append(tool_call['intent'])
                 yield ResolvedCommand(intent=tool_call['intent'], parameters=tool_call.get('parameters', {}), layer="llm", reasoning=tool_call.get('analysis', ''), confidence=tool_call.get('confidence', 1.0))
                 if len(selected_tools) >= self.max_tool_calls:
-                    print(f"[Layer3] Maximum number of tools reached. Stopping execution.")
+                    if self.max_tool_calls > 1:
+                        print(f"[Layer3] Maximum number of tools reached. Stopping execution.")
                     return
 
 
