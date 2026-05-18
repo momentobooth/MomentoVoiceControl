@@ -12,6 +12,7 @@ from core.registry import ResolvedCommand
 from state_machine import StateMachine
 from command_examples import COMMAND_EXAMPLES, CommandExample, ToolInvocation
 from llm.lmstudio_interface import LMStudioLLM
+from llm.lmstudio_single_turn import LMStudioSingleTurn
 
 
 def calculate_metrics(expected_tools: List[ToolInvocation], actual_tools: List[ToolInvocation]):
@@ -48,7 +49,8 @@ def calculate_metrics(expected_tools: List[ToolInvocation], actual_tools: List[T
 def run_command_example_test(
         command_example: CommandExample,
         state_machine: StateMachine,
-        llm_interface: LMStudioLLM
+        llm_interface: LMStudioLLM,
+        max_tool_calls: int
 ) -> Dict[str, Any]:
     """Test a single command example against the LM Studio interface."""
 
@@ -101,7 +103,7 @@ def run_command_example_test(
 
     resolved_commands_as_invocations = [ToolInvocation(cmd.intent, cmd.parameters) for cmd in resolved_commands if cmd.intent != "do_nothing_and_finish"]
 
-    metrics = calculate_metrics(command_example.tool_invocations, resolved_commands_as_invocations)
+    metrics = calculate_metrics(command_example.tool_invocations[:max_tool_calls], resolved_commands_as_invocations)
 
     return {
         'command': command_example.transcript,
@@ -112,21 +114,15 @@ def run_command_example_test(
         'precision': metrics['f1']
     }
 
-def main():
-    """Main function to run all command example tests."""
 
-    # Initialize state machine and LLM interface
-    print("Initializing components...")
-    state_machine = StateMachine()
-    llm_interface = LMStudioLLM(model_name="qwen3.5-2b")
-
+def benchmark_interface_multi_turn(llm_interface: LMStudioLLM, max_tool_calls=3):
     results = []
     total_precision = 0.0
 
     print(f"Testing {len(COMMAND_EXAMPLES)} command examples...\n")
 
     for i, example in enumerate(COMMAND_EXAMPLES):
-        print(f"\n--- Test Case {i+1} ---")
+        print(f"\n--- Test Case {i + 1} ---")
         print(f"Scope: {example.scope.value}")
         print(f"Transcript: {example.transcript}")
 
@@ -134,7 +130,7 @@ def main():
         state_machine = StateMachine(example.scope)
 
         try:
-            result = run_command_example_test(example, state_machine, llm_interface)
+            result = run_command_example_test(example, state_machine, llm_interface, max_tool_calls)
             results.append(result)
 
             print(f"\nResults:")
@@ -146,7 +142,7 @@ def main():
             total_precision += result['precision']
 
         except Exception as e:
-            print(f"Error in test case {i+1}: {e}")
+            print(f"Error in test case {i + 1}: {e}")
             results.append({
                 'command': example.transcript,
                 'expected_tools': [t.name for t in example.tool_invocations],
@@ -157,9 +153,9 @@ def main():
             })
 
     # Summary statistics
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SUMMARY STATISTICS")
-    print("="*60)
+    print("=" * 60)
 
     total_tests = len(results)
     avg_precision = total_precision / total_tests if total_tests > 0 else 0.0
@@ -174,13 +170,33 @@ def main():
     # Show individual results for debugging
     print("\nDetailed Results:")
     for i, result in enumerate(results):
-        print(f"Test {i+1}: '{result['command']}' -> Precision: {result['precision']:.2%}, Time: {result['execution_time']:.4f}s")
+        print(
+            f"Test {i + 1}: '{result['command']}' -> Precision: {result['precision']:.2%}, Time: {result['execution_time']:.4f}s")
         if result['precision'] < 1.0:
             print(f"\tExpected tools: {result['expected_tools']}")
             print(f"\tActual tools found:")
             actual_tools_list: List[ResolvedCommand] = result['actual_tools']
             for tool in actual_tools_list:
                 print(f"\t\t{tool.intent}({tool.parameters}): {tool.reasoning} – {tool.confidence:.2%}")
+
+
+def main():
+    """Main function to run all command example tests."""
+
+    # Initialize state machine and LLM interface
+    print("Initializing components...")
+    # llm_interface = LMStudioLLM(model_name="qwen3.5-2b")
+    # llm_interface = LMStudioLLM(model_name="qwen3.5-2b-qwen3.6-plus-distilled")
+    # llm_interface = LMStudioLLM(model_name="google/gemma-4-e4b")
+    # llm_interface = LMStudioLLM(model_name="google/gemma-4-e2b", use_analysis=False)
+    #
+    # benchmark_interface_multi_turn(llm_interface)
+
+    # llm_single_turn_interface = LMStudioSingleTurn(model_name="google/gemma-4-e2b")
+    llm_single_turn_interface = LMStudioSingleTurn(model_name="qwen3.5-2b")
+    # llm_single_turn_interface = LMStudioSingleTurn(model_name="lfm2.5-1.2b-instruct")
+    benchmark_interface_multi_turn(llm_single_turn_interface, max_tool_calls=1)
+
 
 if __name__ == "__main__":
     main()

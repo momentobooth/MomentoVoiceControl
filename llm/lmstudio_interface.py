@@ -45,6 +45,8 @@ class LMStudioLLM:
             print(f"[Layer3] Error initializing LM Studio: {e}")
             raise
 
+        self.system_prompt = SYSTEM_PROMPTS["has_analysis"] if self.use_analysis else SYSTEM_PROMPTS["no_analysis"]
+
     def extract_intent(
             self, transcript: str, available: Generator[ScopeInfo]
     ) -> Generator[ResolvedCommand]:
@@ -57,11 +59,10 @@ class LMStudioLLM:
         :return:
         """
         selected_tools = []
-        system_prompt = SYSTEM_PROMPTS["has_analysis"] if self.use_analysis else SYSTEM_PROMPTS["no_analysis"]
         tool_call = {'intent': "initial"}
 
         try:
-            chat = lms.Chat(system_prompt)
+            chat = lms.Chat(self.system_prompt)
             config = {
                 "temperature": 0.0,
                 "max_tokens": 256,
