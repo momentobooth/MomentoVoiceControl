@@ -13,13 +13,14 @@ import lmstudio as lms
 
 from core.registry import ResolvedCommand
 from emulation.scope_states import ScopeInfo
+from llm.interface import LLMInterface
 from llm.prompts import SYSTEM_PROMPTS
 from llm.utils import add_no_tool, format_actions, _NO_TOOL, get_schema_analysis, get_schema_no_analysis
 
 
 # ── LM Studio implementation using lmstudio package ──────────────────────────
 
-class LMStudioLLM:
+class LMStudioLLM(LLMInterface):
     def __init__(self, model_name: str = "qwen3.5-2b", use_analysis = True, max_tool_calls = 3, min_confidence = 0.7) -> None:
         """
         Instantiate the LM Studio connection and load the given model.

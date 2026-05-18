@@ -15,9 +15,21 @@ We ask for the response in a constrained format and parse it safely.
 from __future__ import annotations
 import json
 import re
+import abc
+from typing import Generator
 
 from core.registry import ResolvedCommand
+from emulation.scope_states import ScopeInfo
 from matching.params import extract_parameters
+
+
+class LLMInterface(abc.ABC):
+    @abc.abstractmethod
+    def extract_intent(
+        self, transcript: str, available: Generator[ScopeInfo]
+    ) -> Generator[ResolvedCommand]:
+        pass
+
 
 
 # ── Prompt template ───────────────────────────────────────────────────────────

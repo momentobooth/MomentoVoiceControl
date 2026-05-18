@@ -189,12 +189,15 @@ def main():
     # llm_interface = LMStudioLLM(model_name="qwen3.5-2b-qwen3.6-plus-distilled")
     # llm_interface = LMStudioLLM(model_name="google/gemma-4-e4b")
     # llm_interface = LMStudioLLM(model_name="google/gemma-4-e2b", use_analysis=False)
+    # llm_interface = LMStudioLLM(model_name="unsloth/gemma-4-e2b-it", use_analysis=True)
     #
     # benchmark_interface_multi_turn(llm_interface)
 
     # llm_single_turn_interface = LMStudioSingleTurn(model_name="google/gemma-4-e2b")
+    # llm_single_turn_interface = LMStudioSingleTurn(model_name="unsloth/gemma-4-e2b-it")
     llm_single_turn_interface = LMStudioSingleTurn(model_name="qwen3.5-2b")
     # llm_single_turn_interface = LMStudioSingleTurn(model_name="lfm2.5-1.2b-instruct")
+    # llm_single_turn_interface = LMStudioSingleTurn(model_name="llama-3.2-1b-instruct")
     benchmark_interface_multi_turn(llm_single_turn_interface, max_tool_calls=1)
 
 

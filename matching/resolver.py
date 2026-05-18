@@ -21,6 +21,8 @@ import numpy as np
 from rapidfuzz import fuzz, process as rfprocess
 
 from core.registry import CommandDef, CommandRegistry, ResolvedCommand
+from emulation.scope_states import ScopeInfo
+from llm.interface import LLMInterface
 from matching.params import extract_parameters
 
 # ── Thresholds ─────────────────────────────────────────────────────────────────
@@ -35,12 +37,13 @@ class CommandResolver:
     Stays in sync with the registry via on_update callback.
     """
 
-    def __init__(self, registry: CommandRegistry, llm_interface) -> None:
+    def __init__(self, registry: CommandRegistry, llm_interface: LLMInterface) -> None:
         self._registry = registry
         self._llm = llm_interface
 
         # Lazy-load embedding model (only if Layer 2 is actually needed)
         self._embed_model = None
+        self._load_embed_model()
         self._embed_index: list[tuple[np.ndarray, CommandDef]] = []   # (vector, cmd)
 
         registry.on_update(self._rebuild_index)
@@ -92,7 +95,7 @@ class CommandResolver:
             return []
 
         cmd = pairs[idx][1]
-        params = extract_parameters(transcript, cmd.parameters)
+        params = extract_parameters(transcript, cmd)
         print(f"[Layer1] fuzzy score={score:.0f} → {cmd.name}")
         return [ResolvedCommand(intent=cmd.name, parameters=params,
                                 confidence=score / 100, layer="fuzzy")]
@@ -146,7 +149,7 @@ class CommandResolver:
             print(f"[Layer2] embed score={best_score:.3f} — below threshold.")
             return []
 
-        params = extract_parameters(transcript, best_cmd.parameters)
+        params = extract_parameters(transcript, best_cmd)
         print(f"[Layer2] embed score={best_score:.3f} → {best_cmd.name}")
         return [ResolvedCommand(intent=best_cmd.name, parameters=params,
                                 confidence=best_score, layer="embedding")]
@@ -154,11 +157,15 @@ class CommandResolver:
     # ── Layer 3: LLM ─────────────────────────────────────────────────────────
 
     def _llm_match(self, transcript: str) -> list[ResolvedCommand]:
-        available = [
-            {"name": c.name, "examples": c.examples, "parameters": c.parameters}
-            for c in self._registry.commands
-        ]
-        results = self._llm.extract_intent(transcript, available)
-        for r in results:
-            r.layer = "llm"
-        return results
+        def scope_info_generator():
+            while True:
+                next_state_tools = ScopeInfo(
+                    name=self._registry.screen,
+                    actions=self._registry.commands,
+                    description=''
+                )
+                yield next_state_tools
+        # Todo allow multi-turn interactions, but execute commands when available.
+        results_generator = self._llm.extract_intent(transcript, scope_info_generator())
+        results = next(results_generator)
+        return [results]

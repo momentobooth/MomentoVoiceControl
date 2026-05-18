@@ -32,6 +32,7 @@ import uuid
 from paho.mqtt import client as mqtt
 
 from core.registry import CommandRegistry
+from emulation.scope_states import Action, Example
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ MQTT_TOPIC_LISTENS = f"{MQTT_BASE_TOPIC}/listening"
 MQTT_TOPIC_NOTIFY = f"{MQTT_MB_BASE_TOPIC}/notify"
 
 
-def _translate_tools(raw_tools: list[dict]) -> dict:
+def _translate_tools(raw_tools: list[dict]) -> list[Action]:
     """
     Translate the MCP tool schema into the registry's update_commands payload.
 
@@ -88,7 +89,7 @@ def _translate_tools(raw_tools: list[dict]) -> dict:
 
     for tool in raw_tools:
         # Extract parameter names from the JSON Schema properties dict, if present.
-        input_schema = json.loads(tool.get("inputSchema", "{}"))
+        input_schema = tool.get("inputSchema", {})
         properties = input_schema.get("properties", {})
         parameters = {}
         for key, value in properties.items():
@@ -99,15 +100,19 @@ def _translate_tools(raw_tools: list[dict]) -> dict:
             else:
                 parameters[key] = {"type": type_map.get(value_type), "is_array": False}
 
-        # Ensure that there is no punctuation in our examples
-        examples = [remove_characters(e) for e in tool.get("examples", [])]
-        commands.append({
-            "name": tool["name"],
-            "examples": examples,
-            "parameters": parameters,
-        })
+        commands.append(Action(
+            name=tool["name"],
+            title=tool.get("title", ''),
+            description=tool.get("description", ""),
+            examples=[
+                Example(phrase=e.get('phrase'), arguments=e.get('arguments')) for e in tool.get("examples", [])
+            ],
+            input_schema=tool.get("inputSchema", {}),
+            input_schema_description=tool.get("inputSchemaExample", ""),
+            next_state=None,
+        ))
 
-    return {"screen": "", "commands": commands}
+    return commands
 
 
 class MQTTBridge:

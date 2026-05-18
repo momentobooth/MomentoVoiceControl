@@ -1,3 +1,5 @@
+import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import List
@@ -25,8 +27,14 @@ class Example:
     phrase: str
     arguments: dict = field(default_factory=dict)
 
+    def with_example_in_phrase(self) -> "Example":
+        pattern = r"\{(\w*?):(\w*?)\}"
+        replacement = r"\2"
+        new_phrase = re.sub(pattern, replacement, self.phrase)
+        return Example(phrase=new_phrase, arguments=self.arguments)
+
     def to_dict(self):
-        return {"phrase": self.phrase, "arguments": self.arguments}
+        return OrderedDict({"phrase": self.phrase, "arguments": self.arguments})
 
 
 @dataclass

@@ -73,7 +73,7 @@ def format_actions(actions: list[Action]) -> str:
     for a in actions:
         has_params = a.input_schema_description != "{}"
         examples_mapped = [
-            ex.phrase if not has_params else ex.to_dict()
+            ex.phrase if not has_params else ex.with_example_in_phrase().to_dict()
             for ex in a.examples
         ]
         mapped = {

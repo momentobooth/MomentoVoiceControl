@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from pyarrow._flight import Action
+
 
 @dataclass
 class CommandDef:
@@ -70,22 +72,14 @@ class CommandRegistry:
 
     def __init__(self) -> None:
         self.screen: str = ""
-        self.commands: list[CommandDef] = []
+        self.commands: list[Action] = []
         self._on_update_callbacks: list = []
 
-    def update_commands(self, payload: dict) -> None:
-        self.screen = payload.get("screen", "")
-        self.commands = [
-            CommandDef(
-                name=cmd["name"],
-                examples=cmd.get("examples", []),
-                parameters=cmd.get("parameters", []),
-            )
-            for cmd in payload.get("commands", [])
-        ]
+    def update_commands(self, payload: list[Action]) -> None:
+        self.commands = payload
         for cb in self._on_update_callbacks:
             cb(self)
-        print(f"[Registry] Screen={self.screen!r}, {len(self.commands)} commands loaded: {[f"{{ name: {c.name}, params: {c.parameters} }}" for c in self.commands]}.")
+        print(f"[Registry] {len(self.commands)} commands loaded: {[f"{{ name: {c.name}, params: {c.input_schema_description} }}" for c in self.commands]}.")
 
     def on_update(self, callback) -> None:
         """Register a callback(registry) called after every update_commands()."""
@@ -96,5 +90,5 @@ class CommandRegistry:
         pairs = []
         for cmd in self.commands:
             for ex in cmd.examples:
-                pairs.append((ex, cmd))
+                pairs.append((ex.phrase, cmd))
         return pairs

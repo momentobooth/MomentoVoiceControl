@@ -16,6 +16,8 @@ import numpy as np
 from scipy.io import wavfile
 from openai import OpenAI
 
+from emulation.scope_states import Example
+
 # API Settings
 PARAKEET_BASE_URL = os.getenv("STT_URL", "http://localhost:5092/v1")
 PARAKEET_MODEL = "parakeet-tdt-0.6b-v3" #
@@ -68,7 +70,7 @@ class Transcriber:
         for cmd in registry.commands:
             for example in cmd.examples:
                 # Clean placeholders like {device}
-                clean = re.sub(r"\{\w+\}", "", example).lower().strip()
+                clean = re.sub(r"\{\w+\}", "", example.phrase).lower().strip()
                 if len(clean) > 2:
                     unique_commands.add(clean)
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from emulation.scope_states import Action
+
 # Spoken number → int (extend as needed)
 _WORD_TO_NUM: dict[str, int] = {
     "zero": 0, "one": 1, "first": 1, "two": 2, "second": 2, "seconds": 2, "too": 2,
@@ -68,7 +70,7 @@ extractor_map = {
 
 def extract_parameters(
     transcript: str,
-    parameters: dict[str,dict[str, Any]],
+    command: Action,
 ) -> dict[str, Any]:
     """
     Given a list of expected parameter names (from CommandDef.parameters),
@@ -77,6 +79,17 @@ def extract_parameters(
     Returns a dict with whatever was found (missing params are omitted).
     """
     result: dict[str, Any] = {}
+
+    parameters = {}
+    type_map = {"integer": "number", "number": "number", "string": "string"}
+    for key, value in command.input_schema.get('properties', {}).items():
+        value_type = value.get("type")
+        if value_type == "array":
+            sub_type = value.get("items", {}).get("type")
+            parameters[key] = {"type": type_map.get(sub_type), "is_array": True}
+        else:
+            parameters[key] = {"type": type_map.get(value_type), "is_array": False}
+
     for param_name, param in parameters.items():
         param_type = param.get("type", "")
         extractor = extractor_map.get(param_type)

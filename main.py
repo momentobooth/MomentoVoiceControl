@@ -23,6 +23,7 @@ from audio.vad_loop import VADLoop
 from core.pipeline import VoiceControlPipeline
 from core.registry import CommandRegistry
 from llm.interface import MockLLM  # swap to LlamaCppLLM when ready
+from llm.lmstudio_single_turn import LMStudioSingleTurn
 from mqtt_bridge.bridge import MQTTBridge
 
 logging.basicConfig(
@@ -43,7 +44,8 @@ def main():
     bridge = MQTTBridge(registry)
 
     # ── Pipeline ──────────────────────────────────────────────────────────────
-    llm = MockLLM()
+    # llm = MockLLM()
+    llm = LMStudioSingleTurn(model_name="unsloth/gemma-4-e2b-it")
     pipeline = VoiceControlPipeline(registry, llm, utterance_queue, bridge)
     vad = VADLoop(utterance_queue, bridge)
 
